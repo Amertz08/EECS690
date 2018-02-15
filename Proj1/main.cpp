@@ -149,6 +149,13 @@ int main(int argc, char* argv[]) {
         delete[] tracks[i];
     }
     delete[] tracks;
+
+    // Delete threads
+    for (int i = 0; i < nTrains; i++)
+        delete threads[i];
+    delete[] threads;
+
+    // Delete everything else
     delete[] trains;
     delete[] stepCount;
 
