@@ -83,6 +83,7 @@ int main(int argc, char* argv[]) {
 
     if (!inputFile) {
         std::cerr << fileName << " failed to open properly\n";
+        exit(1);
     }
 
     int nTrains, nStations;
@@ -114,12 +115,12 @@ int main(int argc, char* argv[]) {
     inputFile.close();
     // End file read
 
-    // Create mutexes
+    // Create 2D array
     tracks = new std::mutex**[nStations];
     for (int i = 0; i < nStations; i++)
         tracks[i] = new std::mutex*[nStations];
 
-    // Copy mutexes
+    // Create mutexes
     for (int i = 0; i < nStations; i++) {
         for (int j = i; j < nStations; j++) {
             if (j == i)
