@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
 
     // Delete mutexes
     for (int i = 0; i < nStations; i++) {
-        for (int j = 0; j < nStations; j++) {
+        for (int j = i; j < nStations; j++) {
             if (i != j)
                 delete tracks[i][j];
         }
