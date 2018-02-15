@@ -11,7 +11,7 @@ std::mutex*** tracks;
 std::thread** threads;
 std::mutex print_mutex;
 int* stepCount;
-Barrier* b = new Barrier();
+Barrier b;
 
 /**
  * Thread safe print function
@@ -34,17 +34,38 @@ bool go = false;
  */
 void runner(int trainID, int barrierCount, std::vector<int>* moves)
 {
+    b.barrier(barrierCount);
     while (!go)
         ;
-
+    thread_print("Train: " + std::to_string(trainID) + " bcount: " + std::to_string(barrierCount) + "\n");
     for (int i = 0; i < moves->size() - 1; i++) {
         int current = moves->at(i);
         int next = moves->at(i + 1);
-        b->barrier(barrierCount);
-        tracks[current][next]->lock();
-        thread_print("step: " + std::to_string(stepCount[trainID]) + " train: " + std::to_string(trainID) + " current: " + std::to_string(current) + " next: " + std::to_string(next) + "\n");
+        int a, b;
+
+        // Set a to smallest of pair for easier reading
+        if (current > next) {
+            a = next;
+            b = current;
+        } else {
+            a = current;
+            b = next;
+        }
+
+        std::string message = "step: " + std::to_string(stepCount[trainID]) + " train: " + std::to_string(trainID);
+        message += " (" + std::to_string(current) + " -> " + std::to_string(next) + ")";
+        message += " (" + std::to_string(a) + ", " + std::to_string(b) + ")";
+
+        if (tracks[current][next]->try_lock()) {
+            message += "\n";
+            thread_print(message);
+            tracks[current][next]->unlock();
+        } else {
+            message += " must stay at station " + std::to_string(current) + "\n";
+            thread_print(message);
+            i--; // Move isn't actually made so decrement
+        }
         stepCount[trainID]++;
-        tracks[current][next]->unlock();
     }
 }
 
@@ -96,21 +117,18 @@ int main(int argc, char* argv[]) {
 
     // Create mutexes
     tracks = new std::mutex**[nStations];
-    for (int i = 0; i < nStations; i++) {
+    for (int i = 0; i < nStations; i++)
         tracks[i] = new std::mutex*[nStations];
-        for (int j = i; j < nStations; j++) {
-            if (j == i)
-                tracks[i][j] = nullptr;
-            else
-                tracks[i][j] = new std::mutex;
-        }
-    }
 
     // Copy mutexes
     for (int i = 0; i < nStations; i++) {
         for (int j = i; j < nStations; j++) {
-            if (j != i)
+            if (j == i)
+                tracks[i][j] = nullptr;
+            else {
+                tracks[i][j] = new std::mutex;
                 tracks[j][i] = tracks[i][j];
+            }
         }
     }
 
@@ -118,6 +136,19 @@ int main(int argc, char* argv[]) {
     go = true;
     for (int i = 0; i < nTrains; i++)
         threads[i]->join();
+    std::cout << "Ending simulation\n";
+
+    // Delete mutexes
+    for (int i = 0; i < nStations; i++) {
+        for (int j = 0; j < nStations; j++) {
+            if (i != j)
+                delete tracks[i][j];
+        }
+        delete[] tracks[i];
+    }
+    delete[] tracks;
+    delete[] trains;
+    delete[] stepCount;
 
     return 0;
 }
