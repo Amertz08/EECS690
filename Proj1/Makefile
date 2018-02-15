@@ -13,6 +13,9 @@ main.o: dir
 test:
 	$(BIN) input.txt
 
+mem:
+	valgrind --leak-check=full --show-leak-kinds=all $(BIN) input.txt
+
 tar:
 	tar -cvf $(ARCH) \
 	Makefile main.cpp Barrier.hpp \
