@@ -17,7 +17,7 @@ Barrier b;
  * Thread safe print function
  * @param text
  */
-void thread_print(std::string text)
+void thread_print(const std::string &text)
 {
     print_mutex.lock();
     std::cout << text;
@@ -37,7 +37,7 @@ void runner(int trainID, int barrierCount, std::vector<int>* moves)
     b.barrier(barrierCount);
     while (!go)
         ;
-    for (int i = 0; i < moves->size() - 1; i++) {
+    for (unsigned long i = 0; i < moves->size() - 1; i++) {
         int current = moves->at(i);
         int next = moves->at(i + 1);
         int a, b;
