@@ -37,7 +37,6 @@ void runner(int trainID, int barrierCount, std::vector<int>* moves)
     b.barrier(barrierCount);
     while (!go)
         ;
-    thread_print("Train: " + std::to_string(trainID) + " bcount: " + std::to_string(barrierCount) + "\n");
     for (int i = 0; i < moves->size() - 1; i++) {
         int current = moves->at(i);
         int next = moves->at(i + 1);
