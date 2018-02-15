@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < nTrains; i++) {
         int stationCount;
         inputFile >> stationCount;
-        std::cout << "Train: " << i << " Inserting " << stationCount << " stations\n";
+        std::cout << "Train: " << i << " Inserting " << stationCount << " stations ";
         for (int j = 0; j < stationCount; j++) {
             int val;
             inputFile >> val;
