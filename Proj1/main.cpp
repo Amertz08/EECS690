@@ -138,6 +138,9 @@ int main(int argc, char* argv[]) {
         threads[i]->join();
     std::cout << "Ending simulation\n";
 
+    for (int i = 0; i < nTrains; i++)
+        std::cout << "Train: " << i << " finished in " << stepCount[i] << " steps\n";
+
     // Delete mutexes
     for (int i = 0; i < nStations; i++) {
         for (int j = i; j < nStations; j++) {
