@@ -43,7 +43,7 @@ void runner(int trainID, int barrierCount, std::vector<int>* moves)
         int next = moves->at(i + 1);
         int a, b;
 
-        // Set a to smallest of pair for easier reading
+        // Set a to smallest of pair for easier reading in later print statement
         if (current > next) {
             a = next;
             b = current;
