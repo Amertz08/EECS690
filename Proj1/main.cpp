@@ -3,15 +3,22 @@
 #include <string>
 #include <list>
 #include <vector>
+#include <atomic>
 #include <mutex>
 #include <thread>
 #include "Barrier.hpp"
 
-std::mutex*** tracks;
+std::atomic_flag*** tracks;
 std::thread** threads;
 std::mutex print_mutex;
 int* stepCount;
-Barrier b;
+
+int barrierCount;
+int nextBarrierCount;
+std::mutex barrier_mutex;
+
+Barrier stepBarrier; // Syncs thread steps
+bool go = false;
 
 /**
  * Thread safe print function
@@ -24,20 +31,17 @@ void thread_print(const std::string &text)
     print_mutex.unlock();
 }
 
-bool go = false;
-
 /**
  * Runs trains
  * @param trainID
- * @param barrierCount
  * @param moves : vector of moves
  */
-void runner(int trainID, int barrierCount, std::vector<int>* moves)
+void runner(int trainID, std::vector<int>* moves)
 {
-    b.barrier(barrierCount);
     while (!go)
         ;
     for (unsigned long i = 0; i < moves->size() - 1; i++) {
+        stepBarrier.barrier(barrierCount);
         int current = moves->at(i);
         int next = moves->at(i + 1);
         int a, b;
@@ -55,22 +59,29 @@ void runner(int trainID, int barrierCount, std::vector<int>* moves)
         message += " (" + std::to_string(current) + " -> " + std::to_string(next) + ")";
         message += " (" + std::to_string(a) + ", " + std::to_string(b) + ")";
 
-        if (tracks[current][next]->try_lock()) {
+        if (!tracks[current][next]->test_and_set(std::memory_order_acq_rel)) {
             message += "\n";
             thread_print(message);
-            tracks[current][next]->unlock();
+            tracks[current][next]->clear(std::memory_order_release);
         } else {
             message += " must stay at station " + std::to_string(current) + "\n";
             thread_print(message);
             i--; // Move isn't actually made so decrement
         }
         stepCount[trainID]++;
+        if (barrierCount != nextBarrierCount) {
+            barrier_mutex.lock();
+            barrierCount = nextBarrierCount;
+            barrier_mutex.unlock();
+        }
     }
+    barrier_mutex.lock();
+    nextBarrierCount--;
+    barrier_mutex.unlock();
 }
 
 
 int main(int argc, char* argv[]) {
-
     if (argc != 2) {
         std::cerr << argv[0] << " INPUT_FILE\n";
         exit(1);
@@ -91,6 +102,8 @@ int main(int argc, char* argv[]) {
     inputFile >> nStations;
     std::cout << "nTrains: " << nTrains << " nStations: " << nStations << std::endl;
 
+    barrierCount = nTrains;
+    nextBarrierCount = nTrains;
 
     // Create Lists
     auto trains = new std::vector<int>[nTrains];
@@ -110,15 +123,15 @@ int main(int argc, char* argv[]) {
         }
         std::cout << std::endl;
         // function, trainID, barrierCount, moves
-        threads[i] = new std::thread(runner, i, nTrains, &trains[i]);
+        threads[i] = new std::thread(runner, i, &trains[i]);
     }
     inputFile.close();
     // End file read
 
     // Create 2D array
-    tracks = new std::mutex**[nStations];
+    tracks = new std::atomic_flag**[nStations];
     for (int i = 0; i < nStations; i++)
-        tracks[i] = new std::mutex*[nStations];
+        tracks[i] = new std::atomic_flag*[nStations];
 
     // Create mutexes
     for (int i = 0; i < nStations; i++) {
@@ -126,7 +139,9 @@ int main(int argc, char* argv[]) {
             if (j == i)
                 tracks[i][j] = nullptr;
             else {
-                tracks[i][j] = new std::mutex;
+                auto f = new std::atomic_flag;
+                f->clear();
+                tracks[i][j] = f;
                 tracks[j][i] = tracks[i][j];
             }
         }

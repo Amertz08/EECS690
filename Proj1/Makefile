@@ -1,13 +1,10 @@
-G=g++ -g -Wall -std=c++11
+G=g++ -g -Wall -lpthread -std=c++11
 BIN=build/proj1
 M=build/main.o
 ARCH=EECS_690_Mertz_Project_1.tar.gz
 
-build: main.o
-	$(G) $(M) -o $(BIN)
-
-main.o: dir
-	$(G) -c main.cpp -o $(M)
+build: dir main.cpp Barrier.hpp
+	$(G) main.cpp -o $(BIN)
 
 # Test program with input file
 test:
