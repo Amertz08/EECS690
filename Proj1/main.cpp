@@ -41,7 +41,6 @@ void runner(int trainID, std::vector<int>* moves)
     while (!go)
         ;
     for (unsigned long i = 0; i < moves->size() - 1; i++) {
-        stepBarrier.barrier(barrierCount);
         int current = moves->at(i);
         int next = moves->at(i + 1);
         int a, b;
@@ -59,7 +58,8 @@ void runner(int trainID, std::vector<int>* moves)
         message += " (" + std::to_string(current) + " -> " + std::to_string(next) + ")";
         message += " (" + std::to_string(a) + ", " + std::to_string(b) + ")";
 
-        if (!tracks[current][next]->test_and_set(std::memory_order_acq_rel)) {
+        stepBarrier.barrier(barrierCount);
+        if (!tracks[current][next]->test_and_set(std::memory_order_acquire)) {
             message += "\n";
             thread_print(message);
             tracks[current][next]->clear(std::memory_order_release);
