@@ -60,7 +60,7 @@ void runner(int trainID, std::vector<int>* moves)
         message += " (" + std::to_string(a) + ", " + std::to_string(b) + ")";
 
         stepBarrier.barrier(barrierCount);
-        if (!tracks[current][next]->test_and_set(std::memory_order_acquire)) {
+        if (!tracks[current][next]->test_and_set(std::memory_order_acq_rel)) {
             message += "\n";
             thread_print(message);
             tracks[current][next]->clear(std::memory_order_release);
