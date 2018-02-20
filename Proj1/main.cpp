@@ -135,7 +135,7 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < nStations; i++)
         tracks[i] = new std::atomic_flag*[nStations];
 
-    // Create mutexes
+    // Create atomics
     for (int i = 0; i < nStations; i++) {
         for (int j = i; j < nStations; j++) {
             if (j == i)
