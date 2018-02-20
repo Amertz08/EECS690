@@ -59,7 +59,6 @@ void runner(int trainID, std::vector<int>* moves)
         message += " (" + std::to_string(current) + " -> " + std::to_string(next) + ")";
         message += " (" + std::to_string(a) + ", " + std::to_string(b) + ")";
 
-        stepBarrier.barrier(barrierCount);
         if (!tracks[current][next]->test_and_set(std::memory_order_acq_rel)) {
             message += "\n";
             thread_print(message);
@@ -71,13 +70,15 @@ void runner(int trainID, std::vector<int>* moves)
         }
         stepCount[trainID]++;
         if (barrierCount != nextBarrierCount) {
-            barrier_mutex.lock();
+            while (!barrier_mutex.try_lock())
+                ;
             barrierCount = nextBarrierCount;
             barrier_mutex.unlock();
         }
-        countBarrier.barrier(barrierCount);
+        stepBarrier.barrier(barrierCount);
     }
-    barrier_mutex.lock();
+    while (!barrier_mutex.try_lock())
+        ;
     nextBarrierCount--;
     barrier_mutex.unlock();
 }
