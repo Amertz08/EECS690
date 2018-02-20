@@ -18,6 +18,7 @@ int nextBarrierCount;
 std::mutex barrier_mutex;
 
 Barrier stepBarrier; // Syncs thread steps
+Barrier countBarrier;
 bool go = false;
 
 /**
@@ -74,6 +75,7 @@ void runner(int trainID, std::vector<int>* moves)
             barrierCount = nextBarrierCount;
             barrier_mutex.unlock();
         }
+        countBarrier.barrier(barrierCount);
     }
     barrier_mutex.lock();
     nextBarrierCount--;
