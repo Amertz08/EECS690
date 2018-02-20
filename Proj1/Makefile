@@ -1,4 +1,4 @@
-G=g++ -g -Wall -lpthread -std=c++11
+G=g++ -g -Wall -l pthread -std=c++11
 BIN=build/proj1
 M=build/main.o
 ARCH=EECS_690_Mertz_Project_1.tar.gz
