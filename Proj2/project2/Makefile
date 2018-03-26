@@ -17,7 +17,7 @@ ImageLib: ../ImageReader/ImageReader.h ../ImageReader/ImageReader.c++ ../Packed3
 	(cd ../ImageReader; make)
 
 runmain:
-	mpirun -np 3 --allow-run-as-root build/main terry.jpeg
+	mpirun -np 2 --allow-run-as-root build/main terry.jpeg
 
 runsample:
 	build/sample terry.jpeg
