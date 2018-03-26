@@ -13,3 +13,4 @@ RUN  apt-get install -y \
 RUN mkdir /code
 WORKDIR /code
 ADD . .
+WORKDIR project2
