@@ -7,6 +7,27 @@
 
 #define BUFFER_MAX 100
 
+typedef struct Image {
+    const unsigned char* d;
+    int x, y, z;
+} img_t;
+
+img_t* DecomposeImage(cryph::Packed3DArray<unsigned char>* pa)
+{
+    auto image = new Image();
+    image->d = pa->getData();
+    image->x = pa->getDim1();
+    image->y = pa->getDim2();
+    image->z = pa->getDim3();
+    return image;
+}
+
+crpyph::Packed3DArray<unsigned char>* ComposeImage(img_t* img)
+{
+    auto pa = new crpyh::Packed3DArray<unsigned char>(img.x, img.y, img.z, img.d);
+    return pa;
+}
+
 void print_imgs(std::vector<std::string>* l)
 {
     std::cout << "Image list\n";
@@ -33,7 +54,7 @@ int main(int argc, char* argv[]) {
     // std::cout << "imgCount: " << imgCount << std::endl;
     int processingRanks = rankCount - 1;
     if (imgCount != processingRanks) {
-        std::cerr << "Rank count and image count missmatch. processingRanks = "
+        std::cerr << "Rank count and image count mismatch. processingRanks = "
                   << processingRanks << " imgCount = " << imgCount << std::endl;
         for (int i = 0; i < argc; i++) {
             std::cout << argv[i] << " ";
@@ -46,8 +67,7 @@ int main(int argc, char* argv[]) {
     if (rank == 0) {
 
         // Get image data and dimension data from image
-        std::vector<const unsigned char*> imgData;
-        std::vector<int*> dims;
+        std::vector<img_t*> images;
         for (int i = 1; i < imgCount; i++) {
             auto ir = ImageReader::create(argv[i]);
             if (ir == nullptr) {
@@ -55,12 +75,8 @@ int main(int argc, char* argv[]) {
                 exit(1);
             }
             cryph::Packed3DArray<unsigned char>* pa = ir->getInternalPacked3DArrayImage();
-            imgData.push_back(pa->getData());
-            int* d = new int[3];
-            d[0] = pa->getDim1();
-            d[1] = pa->getDim2();
-            d[2] = pa->getDim3();
-            dims.push_back(d);
+            img_t* image = BreakDownImage(pa);
+            images.push_back(image);
             delete ir;
         }
 
