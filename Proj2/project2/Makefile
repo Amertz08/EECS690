@@ -5,7 +5,7 @@ main: main.o ImageLib
 	mpic++ build/main.o ../lib/libCOGLImageReader.so -o build/main
 
 main.o:
-	mpic++ -I../Packed3DArray -I../ImageReader -c main.cpp -o build/main.o
+	mpic++ -std=c++11 -I../Packed3DArray -I../ImageReader -c main.cpp -o build/main.o
 
 sample: sample.o ImageLib
 	g++ -o build/sample build/sample.o ../lib/libCOGLImageReader.so
@@ -17,10 +17,10 @@ ImageLib: ../ImageReader/ImageReader.h ../ImageReader/ImageReader.c++ ../Packed3
 	(cd ../ImageReader; make)
 
 runmain:
-	build/main
+	build/main nigel.jpeg
 
 runsample:
-	build/sample terry.jpeg
+	build/sample nigel.jpeg
 
 dir:
 	rm -rf build
