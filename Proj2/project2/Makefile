@@ -17,10 +17,10 @@ ImageLib: ../ImageReader/ImageReader.h ../ImageReader/ImageReader.c++ ../Packed3
 	(cd ../ImageReader; make)
 
 runmain:
-	build/main nigel.jpeg
+	mpirun -np 3 --allow-run-as-root build/main terry.jpeg
 
 runsample:
-	build/sample nigel.jpeg
+	build/sample terry.jpeg
 
 dir:
 	rm -rf build
