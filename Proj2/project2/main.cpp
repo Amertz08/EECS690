@@ -5,27 +5,17 @@
 
 #include "ImageReader.h"
 
-#define BUFFER_MAX 100
-
-typedef struct Image {
-    const unsigned char* d;
-    int x, y, z;
-} img_t;
-
-img_t* DecomposeImage(cryph::Packed3DArray<unsigned char>* pa)
+void mapToArray(cryph::Packed3DArray<unsigned char>* img, char* data)
 {
-    auto image = new Image();
-    image->d = pa->getData();
-    image->x = pa->getDim1();
-    image->y = pa->getDim2();
-    image->z = pa->getDim3();
-    return image;
-}
+    int prevSize = 0;
+    for (int r = 0; r < img->getDim1(); r++) {
+        for (int c = 0; c < img->getDim2(); c++) {
+            for (int rgb = 0; rgb < img->getDim3(); rgb++) {
+                data[prevSize + r + c + rgb] = img->getDataElement(r, c, rgb);
+            }
+        }
+    }
 
-crpyph::Packed3DArray<unsigned char>* ComposeImage(img_t* img)
-{
-    auto pa = new crpyh::Packed3DArray<unsigned char>(img.x, img.y, img.z, img.d);
-    return pa;
 }
 
 void print_imgs(std::vector<std::string>* l)
@@ -34,6 +24,11 @@ void print_imgs(std::vector<std::string>* l)
     for (auto const& entry : *l) {
         std::cout << entry << std::endl;
     }
+}
+
+void print(std::string msg)
+{
+    std::cout << msg << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -67,22 +62,79 @@ int main(int argc, char* argv[]) {
     if (rank == 0) {
 
         // Get image data and dimension data from image
-        std::vector<img_t*> images;
-        for (int i = 1; i < imgCount; i++) {
-            auto ir = ImageReader::create(argv[i]);
+        int maxImgSize = 0;
+        std::vector<cryph::Packed3DArray<unsigned char>*> images;
+        for (int i = 1; i < imgCount + 1; i++) {
+            auto file = argv[i];
+            std::cout << "Reading file: " << file << std::endl;
+            auto ir = ImageReader::create(file);
             if (ir == nullptr) {
-                std::cerr << "Could not open image file " << argv[i] << std::endl;
+                std::cerr << "Could not open image file " << file << std::endl;
                 exit(1);
             }
-            cryph::Packed3DArray<unsigned char>* pa = ir->getInternalPacked3DArrayImage();
-            img_t* image = BreakDownImage(pa);
-            images.push_back(image);
+            auto pa = ir->getInternalPacked3DArrayImage();
+            if (pa->getTotalNumberElements() > maxImgSize)
+                maxImgSize = pa->getTotalNumberElements();
+
+            images.push_back(pa);
             delete ir;
         }
 
+        // Map Image data to char array
+        auto data = new char[maxImgSize];
+        auto reqs = new MPI_Request[imgCount];
+
+        // Send char data
+        for (int i = 1; i < imgCount + 1; i++) {
+            mapToArray(images.at(i - 1), data);
+            std::cout << "Sending data to rank: " << i << std::endl;
+            // Send immediate so we can continue calculations
+            MPI_Isend(data, maxImgSize, MPI_UNSIGNED_CHAR, i, msgTag, MPI_COMM_WORLD, &reqs[i]);
+        }
+
+        // Send int data
+        int* dims;
+        for (int i = 1; i < imgCount + 1; i++) {
+            auto img = images.at(i - 1);
+            dims = new int[3];
+            dims[0] = img->getDim1();
+            dims[1] = img->getDim2();
+            dims[2] = img->getDim3();
+            MPI_Isend(dims, 3, MPI_INT, i, msgTag, MPI_COMM_WORLD, &reqs[i]);
+            delete dims;
+        }
 
     } else {
+        MPI_Status status;
+        // Wait till we get a message
+        MPI_Probe(0, msgTag, MPI_COMM_WORLD, &status);
 
+        // Get size
+        int size;
+        MPI_Get_count(&status, MPI_UNSIGNED_CHAR, &size);
+        std::cout << "rank: " << rank << " image size recieved: " << size << std::endl;
+
+        // Read image data
+        auto dataBuffer = new unsigned char[size];
+        MPI_Recv(dataBuffer, size, MPI_UNSIGNED_CHAR, 0, msgTag, MPI_COMM_WORLD, &status);
+        std::cout << "rank: " << rank << " read image\n";
+
+        // Wait till we get a message
+        MPI_Probe(0, msgTag, MPI_COMM_WORLD, &status);
+
+        // Get size
+        MPI_Get_count(&status, MPI_INT, &size);
+        std::cout << "rank: " << rank << " dimensions size recieved: " << size << std::endl;
+
+        // Read dimension data
+        auto dims = new int[size];
+        MPI_Recv(dims, size, MPI_INT, 0, msgTag, MPI_COMM_WORLD, &status);
+        std::cout << "rank: " << rank << " read ints\n";
+
+        // Build out array
+        auto pa = new cryph::Packed3DArray<unsigned char>(dims[0], dims[1], dims[2], dataBuffer);
+        delete dataBuffer;
+        delete dims;
     }
 
     MPI_Finalize();
