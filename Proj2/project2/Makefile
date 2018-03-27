@@ -20,7 +20,7 @@ runmain:
 	mpirun -np 3 \
 	--allow-run-as-root \
 	--mca orte_base_help_aggregate 0 \
-	build/main terry.jpg hello.jpg
+	build/main terry.jpeg hello.jpg
 
 runsample:
 	build/sample terry.jpg
