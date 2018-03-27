@@ -17,13 +17,13 @@ ImageLib: ../ImageReader/ImageReader.h ../ImageReader/ImageReader.c++ ../Packed3
 	(cd ../ImageReader; make)
 
 runmain:
-	mpirun -np 2 \
+	mpirun -np 3 \
 	--allow-run-as-root \
 	--mca orte_base_help_aggregate 0 \
-	build/main terry.jpeg
+	build/main terry.jpg hello.jpg
 
 runsample:
-	build/sample terry.jpeg
+	build/sample terry.jpg
 
 dir:
 	rm -rf build
