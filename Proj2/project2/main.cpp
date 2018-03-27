@@ -5,17 +5,18 @@
 
 #include "ImageReader.h"
 
-void mapToArray(cryph::Packed3DArray<unsigned char>* img, char* data)
+float* CalculateHistogram(cryph::Packed3DArray<unsigned char>* pa)
 {
-    int prevSize = 0;
-    for (int r = 0; r < img->getDim1(); r++) {
-        for (int c = 0; c < img->getDim2(); c++) {
-            for (int rgb = 0; rgb < img->getDim3(); rgb++) {
-                data[prevSize + r + c + rgb] = img->getDataElement(r, c, rgb);
+    auto results = new float[3]();
+
+    for (int r = 0; r < pa->getDim1(); r++) {
+        for (int c = 0; c < pa->getDim2(); c++) {
+            for (int rgb = 0; rgb < pa->getDim3(); rgb++) {
+                // calculate
             }
         }
     }
-
+    return results;
 }
 
 void print_imgs(std::vector<std::string>* l)
@@ -62,7 +63,7 @@ int main(int argc, char* argv[]) {
     if (rank == 0) {
 
         // Get image data and dimension data from image
-        auto dims = new int*[imgCount];
+        auto dims = new int*[imgCount - 1];
         auto images = new cryph::Packed3DArray<unsigned char>*[imgCount];
         for (int i = 0; i < imgCount; i++) {
             auto file = argv[i + 1];
@@ -74,11 +75,11 @@ int main(int argc, char* argv[]) {
             }
             auto pa = ir->getInternalPacked3DArrayImage();
 
-            images[i] = pa;
+            images[i + 1] = pa;
             dims[i] = new int[3];
-            dims[i][0] = images[i]->getDim1();
-            dims[i][1] = images[i]->getDim2();
-            dims[i][2] = images[i]->getDim3();
+            dims[i][0] = images[i + 1]->getDim1();
+            dims[i][1] = images[i + 1]->getDim2();
+            dims[i][2] = images[i + 1]->getDim3();
             delete ir;
         }
 
@@ -87,23 +88,31 @@ int main(int argc, char* argv[]) {
 
         std::cout << "rank 0: sending dimension data...\n";
         // Send dimension data to ranks > 0
-        for (int i = 1; i < imgCount; i++) {
-            std::cout << "sending dimensions to rank: " << i << std::endl;
-            MPI_Send(dims[i], 3, MPI_INT, i, msgTag, MPI_COMM_WORLD);
+        for (int i = 0; i < imgCount - 1; i++) {
+            std::cout << "sending dimensions to rank: " << i + 1 << std::endl;
+            MPI_Send(dims[i], 3, MPI_INT, i + 1, msgTag, MPI_COMM_WORLD);
         }
 
         // Send data
-        for (int i = 0; i < imgCount; i++) {
-            auto img = images[i];
-            if (i != 0) {
-                auto data = img->getData();
-                auto size = img->getTotalNumberElements();
-                MPI_Isend(data, size, MPI_UNSIGNED_CHAR, i, msgTag, MPI_COMM_WORLD, &reqs[i]);
-            }
+        for (int i = 0; i < imgCount - 1; i++) {
+            auto img = images[i + 1];
+            auto data = img->getData();
+            auto size = img->getTotalNumberElements();
+            MPI_Isend(data, size, MPI_UNSIGNED_CHAR, i + 1, msgTag, MPI_COMM_WORLD, &reqs[i]);
         }
 
-        // Do rank 0 calculations
+        /*
+         * Do rank 0 calculations
+         */
 
+
+        // TODO: delete data structures
+        for (int i = 0; i < imgCount - 1; i++) {
+            delete[] dims[i];
+        }
+        delete dims;
+        delete reqs;
+        delete[] images;
     } else {
         int recDims[3];
         MPI_Status status;
@@ -116,8 +125,10 @@ int main(int argc, char* argv[]) {
         auto dataBuffer = new unsigned char[size];
         std::cout << "rank: " << rank << " waiting on data\n";
         MPI_Recv(dataBuffer, size, MPI_UNSIGNED_CHAR, 0, msgTag, MPI_COMM_WORLD, &status);
-        std::cout << "rank: " << rank << " read image\n";
+        std::cout << "rank: " << rank << " data received\n";
         delete[] dataBuffer;
+
+        // Do histogram calculations
     }
 
     MPI_Finalize();
