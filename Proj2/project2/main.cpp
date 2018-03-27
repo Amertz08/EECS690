@@ -1,22 +1,79 @@
 #include <iostream>
+#include <math.h>
 #include <vector>
 #include <string>
 #include <mpi.h>
 
 #include "ImageReader.h"
 
-float* CalculateHistogram(cryph::Packed3DArray<unsigned char>* pa)
+float ArrayDiff(float* a, float* b)
 {
-    auto results = new float[3]();
+    float diff = 0.0;
+    for (int i = 0; i < 256; i++) {
+        diff += abs(a[i] - b[i]);
+    }
+    return diff;
+}
 
+float* ColorScore(float** a, float** b)
+{
+    auto s = new float[3]();
+    for (int i = 0; i < 3; i++) {
+        s[i] = ArrayDiff(a[i], b[i]);
+    }
+    return s;
+}
+
+float Score(float** a, float** b)
+{
+    auto scores = ColorScore(a, b);
+    float s = 0.0;
+    for (int i = 0; i < 3; i++) {
+        s += scores[i];
+    }
+    delete[] scores;
+    return s;
+}
+
+int** ColorCount(cryph::Packed3DArray<unsigned char>* pa)
+{
+    auto colorCount = new int*[3];
+    for (int i = 0; i < 3; i++) {
+        colorCount[i] = new int[256]();
+    }
+    // Tally color count
     for (int r = 0; r < pa->getDim1(); r++) {
         for (int c = 0; c < pa->getDim2(); c++) {
             for (int rgb = 0; rgb < pa->getDim3(); rgb++) {
                 // calculate
+                auto el = (int)pa->getDataElement(r, c, rgb);
+                colorCount[rgb][el] += 1;
             }
         }
     }
-    return results;
+    return colorCount;
+}
+
+float** CalculateHistogram(cryph::Packed3DArray<unsigned char>* pa)
+{
+
+    auto colorCount = ColorCount(pa);
+    auto proportions = new float*[3];
+
+    auto denominator = (float)pa->getTotalNumberElements() / 3;
+
+    for (int i = 0; i < 3; i++) {
+        proportions[i] = new float[256]();
+        for (int j = 0; j < 255; j++) {
+            proportions[i][j] = (float)colorCount[i][j] / denominator;
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        delete[] colorCount[i];
+    }
+    delete[] colorCount;
+    return proportions;
 }
 
 void print_imgs(std::vector<std::string>* l)
@@ -104,15 +161,19 @@ int main(int argc, char* argv[]) {
         /*
          * Do rank 0 calculations
          */
+        auto weights = new float**[3];
+
+        weights[0] = CalculateHistogram(images[0]);
 
 
         // TODO: delete data structures
-        for (int i = 0; i < imgCount - 1; i++) {
-            delete[] dims[i];
-        }
-        delete dims;
-        delete reqs;
-        delete[] images;
+//        for (int i = 0; i < imgCount - 1; i++) {
+//            delete[] dims[i];
+//        }
+//        delete[] dims;
+//        delete[] images;
+//        delete[] weights;
+//        delete[] reqs;
     } else {
         int recDims[3];
         MPI_Status status;
@@ -126,9 +187,14 @@ int main(int argc, char* argv[]) {
         std::cout << "rank: " << rank << " waiting on data\n";
         MPI_Recv(dataBuffer, size, MPI_UNSIGNED_CHAR, 0, msgTag, MPI_COMM_WORLD, &status);
         std::cout << "rank: " << rank << " data received\n";
-        delete[] dataBuffer;
 
         // Do histogram calculations
+        cryph::Packed3DArray<unsigned char> array(recDims[0], recDims[1], recDims[2], dataBuffer);
+        delete[] dataBuffer;
+
+        auto hist = CalculateHistogram(&array);
+
+        // TODO calculate histogram
     }
 
     MPI_Finalize();
