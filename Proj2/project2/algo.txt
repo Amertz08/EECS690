@@ -1,0 +1,8 @@
+1. rank 0 read images
+2. send data to all ranks
+3. all processes receive images
+4. process computes rgb color %
+5. propagate histograms to every other process
+6. Calculate which image is most similar
+7. Report answer back to rank 0
+8. rank 0 reports results
