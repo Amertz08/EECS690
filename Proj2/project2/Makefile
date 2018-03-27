@@ -1,5 +1,5 @@
 
-build: main sample
+build: dir main sample
 
 main: main.o ImageLib
 	mpic++ build/main.o ../lib/libCOGLImageReader.so -o build/main
