@@ -62,10 +62,10 @@ int main(int argc, char* argv[]) {
     if (rank == 0) {
 
         // Get image data and dimension data from image
-        int maxImgSize = 0;
-        std::vector<cryph::Packed3DArray<unsigned char>*> images;
-        for (int i = 1; i < imgCount + 1; i++) {
-            auto file = argv[i];
+        auto dims = new int*[imgCount];
+        auto images = new cryph::Packed3DArray<unsigned char>*[imgCount];
+        for (int i = 0; i < imgCount; i++) {
+            auto file = argv[i + 1];
             std::cout << "Reading file: " << file << std::endl;
             auto ir = ImageReader::create(file);
             if (ir == nullptr) {
@@ -73,68 +73,51 @@ int main(int argc, char* argv[]) {
                 exit(1);
             }
             auto pa = ir->getInternalPacked3DArrayImage();
-            if (pa->getTotalNumberElements() > maxImgSize)
-                maxImgSize = pa->getTotalNumberElements();
 
-            images.push_back(pa);
+            images[i] = pa;
+            dims[i] = new int[3];
+            dims[i][0] = images[i]->getDim1();
+            dims[i][1] = images[i]->getDim2();
+            dims[i][2] = images[i]->getDim3();
             delete ir;
         }
 
-        // Map Image data to char array
-        auto data = new char[maxImgSize];
-        auto reqs = new MPI_Request[imgCount];
+        // Requests to rank > 0
+        auto reqs = new MPI_Request[imgCount - 1];
 
-        // Send char data
-        for (int i = 1; i < imgCount + 1; i++) {
-            mapToArray(images.at(i - 1), data);
-            std::cout << "Sending data to rank: " << i << std::endl;
-            // Send immediate so we can continue calculations
-            MPI_Isend(data, maxImgSize, MPI_UNSIGNED_CHAR, i, msgTag, MPI_COMM_WORLD, &reqs[i]);
+        std::cout << "rank 0: sending dimension data...\n";
+        // Send dimension data to ranks > 0
+        for (int i = 1; i < imgCount; i++) {
+            std::cout << "sending dimensions to rank: " << i << std::endl;
+            MPI_Send(dims[i], 3, MPI_INT, i, msgTag, MPI_COMM_WORLD);
         }
 
-        // Send int data
-        int* dims;
-        for (int i = 1; i < imgCount + 1; i++) {
-            auto img = images.at(i - 1);
-            dims = new int[3];
-            dims[0] = img->getDim1();
-            dims[1] = img->getDim2();
-            dims[2] = img->getDim3();
-            MPI_Isend(dims, 3, MPI_INT, i, msgTag, MPI_COMM_WORLD, &reqs[i]);
-            delete dims;
+        // Send data
+        for (int i = 0; i < imgCount; i++) {
+            auto img = images[i];
+            if (i != 0) {
+                auto data = img->getData();
+                auto size = img->getTotalNumberElements();
+                MPI_Isend(data, size, MPI_UNSIGNED_CHAR, i, msgTag, MPI_COMM_WORLD, &reqs[i]);
+            }
         }
+
+        // Do rank 0 calculations
 
     } else {
+        int recDims[3];
         MPI_Status status;
-        // Wait till we get a message
-        MPI_Probe(0, msgTag, MPI_COMM_WORLD, &status);
-
-        // Get size
-        int size;
-        MPI_Get_count(&status, MPI_UNSIGNED_CHAR, &size);
-        std::cout << "rank: " << rank << " image size recieved: " << size << std::endl;
+        std::cout << "rank: " << rank << " waiting on dimensions\n";
+        MPI_Recv(&recDims, 3, MPI_INT, 0, msgTag, MPI_COMM_WORLD, &status);
+        int size = recDims[0] * recDims[1] * recDims[2];
+        std::cout << "rank: " << rank << " image size received: " << size << std::endl;
 
         // Read image data
         auto dataBuffer = new unsigned char[size];
+        std::cout << "rank: " << rank << " waiting on data\n";
         MPI_Recv(dataBuffer, size, MPI_UNSIGNED_CHAR, 0, msgTag, MPI_COMM_WORLD, &status);
         std::cout << "rank: " << rank << " read image\n";
-
-        // Wait till we get a message
-        MPI_Probe(0, msgTag, MPI_COMM_WORLD, &status);
-
-        // Get size
-        MPI_Get_count(&status, MPI_INT, &size);
-        std::cout << "rank: " << rank << " dimensions size recieved: " << size << std::endl;
-
-        // Read dimension data
-        auto dims = new int[size];
-        MPI_Recv(dims, size, MPI_INT, 0, msgTag, MPI_COMM_WORLD, &status);
-        std::cout << "rank: " << rank << " read ints\n";
-
-        // Build out array
-        auto pa = new cryph::Packed3DArray<unsigned char>(dims[0], dims[1], dims[2], dataBuffer);
-        delete dataBuffer;
-        delete dims;
+        delete[] dataBuffer;
     }
 
     MPI_Finalize();
