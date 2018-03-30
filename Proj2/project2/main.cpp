@@ -8,6 +8,11 @@
 
 #include "ImageReader.h"
 
+/**
+ * Flattens 3x256 into 768 float array
+ * @param h : float[3][256]
+ * @return : float[768]
+ */
 float* FlattenHist(float **h)
 {
     auto data = new float[256 * 3];
@@ -18,6 +23,11 @@ float* FlattenHist(float **h)
     }
 }
 
+/**
+ * Takes 768 length histogram and rebuilds to 3x256
+ * @param h : float[768]
+ * @return : float[3][256]
+ */
 float** RebuildHist(float* h){
     auto colors = new float*[3];
     for(int i = 0; i < 3; i++) {
@@ -29,32 +39,42 @@ float** RebuildHist(float* h){
     return colors;
 }
 
+/**
+ * Sum of the magnitude difference in two normalized histograms of color
+ * @param a : normalized histogram of a specific color
+ * @param b : normalized histogram of a specific color
+ * @return sigma(|a[i] - b[i]|)
+ */
 float ArrayDiff(float* a, float* b)
 {
     float diff = 0;
     for (int i = 0; i < 256; i++) {
-//        diff += abs(a[i] - b[i]);
+        diff += abs(a[i] - b[i]);
     }
     return diff;
 }
 
+/**
+ * Calculates the total magnitude difference for a specific color in the images
+ * @param a : R, G, or B normalized frequency distribution for an image
+ * @param b : R, G, or B normalized frequency distribution for an image
+ * @return the sum of the absolute value of the difference of each entry
+ */
 float* ColorScore(float** a, float** b)
 {
     auto s = new float[3];
     for (int i = 0; i < 3; i++) {
-//        std::cout << "i: "
-//                  << i
-//                  << " a[i][0]: "
-//                  << a[i][0]
-//                  << " b[i][0]: "
-//                  << b[i][0]
-//                  << std::endl;
-//        s[i] = ArrayDiff(a[i], b[i]);
-        ArrayDiff(a[i], b[i]);
+        s[i] = ArrayDiff(a[i], b[i]);
     }
     return s;
 }
 
+/**
+ * Calculates the simularity score for the given image proportion data
+ * @param a : 3x256 normalized histogram for RGB colors
+ * @param b : 3x256 normalized histogram for RGB colors
+ * @return : Sum of the total difference between each of the 3 colors.
+ */
 float Score(float** a, float** b)
 {
     auto scores = ColorScore(a, b);
@@ -66,6 +86,29 @@ float Score(float** a, float** b)
     return s;
 }
 
+/**
+ * Calculates the scores for the given rank
+ * @param weights
+ * @param imgCount
+ * @param rank
+ * @return
+ */
+float* GetScores(float*** weights, int imgCount, int rank)
+{
+    std::cout << "rank: " << rank << " calculating scores\n";
+    auto scores = new float[imgCount]();
+    for (int i = 0; i < imgCount; i++) {
+        if (i != rank) {
+            scores[i] = Score(weights[rank], weights[i]);
+        }
+    }
+}
+
+/**
+ * Calculates the frequency histograms for RGB color values in the image
+ * @param pa : Packed3DArray object
+ * @return : 3 x 256 int array of RGB color frequency
+ */
 int** ColorCount(cryph::Packed3DArray<unsigned char>* pa)
 {
     auto colorCount = new int*[3];
@@ -85,6 +128,11 @@ int** ColorCount(cryph::Packed3DArray<unsigned char>* pa)
     return colorCount;
 }
 
+/**
+ * Calculates the normalized histogram for the image
+ * @param pa : Packed3DArray object
+ * @return : 3 x 256 float array with normalized frequency distributions of RGB colors
+ */
 float** CalculateHistogram(cryph::Packed3DArray<unsigned char>* pa)
 {
 
@@ -115,6 +163,13 @@ void print_imgs(std::vector<std::string>* l)
     }
 }
 
+void PrintScores(float* scores, int imageCount, int rank)
+{
+    for (int i = 0; i < imageCount; i++) {
+        std::cout << "rank: " << rank << " scores[" << i << "]: " << scores[i] << std::endl;
+    }
+}
+
 
 int main(int argc, char* argv[]) {
     // Setup MPI
@@ -142,7 +197,7 @@ int main(int argc, char* argv[]) {
         }
         exit(1);
     }
-    std::cout << "Image count: " << imgCount << " Ranks: " << rankCount << std::endl;
+//    std::cout << "Image count: " << imgCount << " Ranks: " << rankCount << std::endl;
 
     srand (time(NULL));
     int msgTag = 1;
@@ -195,6 +250,7 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < imgCount; i++) {
             if (i != rank) {
                 flatData[i] = new float[flatSize];
+                std::cout << "rank: 0 getting proportion data from " << i << std::endl;
                 MPI_Recv(flatData[i], flatSize, MPI_FLOAT, i, msgTag, MPI_COMM_WORLD, &status);
             }
         }
@@ -207,20 +263,18 @@ int main(int argc, char* argv[]) {
         }
 
         // Send data back out to ranks
-        MPI_Request reqs[imgCount - 1];
-        for (int i = 0; i < imgCount; i++) {
-            if (i != rank) {
-                std::cout << "Sending proportion data to rank: " << i << std::endl;
-                MPI_Isend(flatData[i], flatSize, MPI_FLOAT, i, msgTag, MPI_COMM_WORLD, &reqs[i - 1]);
+        for (int r = 0; r < imgCount; r++) { // For each rank
+            std::cout << "Sending proportion data to rank: " << r << std::endl;
+            for (int i = 0; i < imgCount; i++) { // Send each image except its own
+                if (i != r) { // When target rank isn't data rank
+                    std::cout << "sending i: " << i << " to: " << r << std::endl;
+                    MPI_Send(flatData[i], flatSize, MPI_FLOAT, r, msgTag, MPI_COMM_WORLD); // (imgCount - 1) ** 2 sends
+                }
             }
         }
 
-        auto scores = new float[imgCount]();
-        for (int i = 0; i < imgCount; i++) {
-            if (i != rank) {
-                scores[i] = Score(weights[rank], weights[i]);
-            }
-        }
+        auto scores = GetScores(weights, imgCount, rank);
+//        PrintScores(scores, imgCount, rank);
 
 
 
@@ -228,6 +282,7 @@ int main(int argc, char* argv[]) {
 //        delete[] weights;
         delete localImage;
     } else {
+        // Get dimensions
         int recDims[3];
         MPI_Status status;
         std::cout << "rank: " << rank << " waiting on dimensions\n";
@@ -252,16 +307,19 @@ int main(int argc, char* argv[]) {
         int flatSize = 256 * 3;
         auto flatData = new float*[3];
         flatData[rank] = flatHist;
+        std::cout << "rank: " << rank << " sending histogram back to rank 0\n";
         MPI_Send(flatHist, flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD);
 
         // Get all other ranks data
         for (int i = 0; i < imgCount; i++) {
             if (i != rank) {
-                std::cout << "rank: " << rank << " waiting on proportion data\n";
+                std::cout << "rank: " << rank << " waiting on proportion data for: " << i << std::endl;
                 flatData[i] = new float[flatSize];
-                MPI_Recv(flatData[i], flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &status);
+                MPI_Recv(flatData[i], flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &status); // (imgCount - 1) ** 2 Rec
             }
         }
+//        MPI_Recv(flatData, flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &status);
+        std::cout << "rank: " << rank << " made it out\n";
 
         // Unflatten data
         float** weights[3];
@@ -272,17 +330,16 @@ int main(int argc, char* argv[]) {
                 weights[i] = hist;
         }
 
-        // Get scores
-        auto scores = new float[imgCount]();
-        for (int i = 0; i < imgCount; i++) {
-            if (i != rank) {
-                scores[i] = Score(weights[rank], weights[i]);
-            }
-        }
+        // Calculate scores
+        auto scores = GetScores(weights, imgCount, rank);
+
+//        for (int i = 0; i < imgCount; i++) {
+//            std::cout << "Score: " << scores[i] << std::endl;
+//        }
 
 
         // TODO: delete objects
-        delete hist;
+//        delete hist;
     }
 
     MPI_Finalize();
