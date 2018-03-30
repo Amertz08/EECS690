@@ -19,7 +19,9 @@ ImageLib: ../ImageReader/ImageReader.h ../ImageReader/ImageReader.c++ ../Packed3
 runmain:
 	mpirun -np 4 \
 	--allow-run-as-root \
-	--mca orte_base_help_aggregate 0 \
+	--mca orte_base_help_aggregate 1 \
+	--mca mpi_param_check 1 \
+	--mca mpi_show_handle_leaks 1 \
 	build/main \
 	terry.jpeg \
 	hello.jpg \

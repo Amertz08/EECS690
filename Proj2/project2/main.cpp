@@ -102,6 +102,7 @@ float* GetScores(float*** weights, int imgCount, int rank)
             scores[i] = Score(weights[rank], weights[i]);
         }
     }
+    return scores;
 }
 
 /**
@@ -255,13 +256,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-
-        // Rebuild data
-        for (int i = 0; i < imgCount; i++) {
-            if (i != rank)
-                weights[i] = RebuildHist(flatData[i]);
-        }
-
         // Send data back out to ranks
         for (int r = 0; r < imgCount; r++) { // For each rank
             std::cout << "Sending proportion data to rank: " << r << std::endl;
@@ -273,6 +267,13 @@ int main(int argc, char* argv[]) {
             }
         }
 
+
+        // Rebuild data
+        for (int i = 0; i < imgCount; i++) {
+            if (i != rank)
+                weights[i] = RebuildHist(flatData[i]);
+        }
+
         auto scores = GetScores(weights, imgCount, rank);
 //        PrintScores(scores, imgCount, rank);
 
@@ -280,7 +281,7 @@ int main(int argc, char* argv[]) {
 
         // TODO: delete objects
 //        delete[] weights;
-        delete localImage;
+//        delete localImage;
     } else {
         // Get dimensions
         int recDims[3];
@@ -316,9 +317,9 @@ int main(int argc, char* argv[]) {
                 std::cout << "rank: " << rank << " waiting on proportion data for: " << i << std::endl;
                 flatData[i] = new float[flatSize];
                 MPI_Recv(flatData[i], flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &status); // (imgCount - 1) ** 2 Rec
+                std::cout << "rank: " << rank << " received proportion data for: " << i << std::endl;
             }
         }
-//        MPI_Recv(flatData, flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &status);
         std::cout << "rank: " << rank << " made it out\n";
 
         // Unflatten data
@@ -332,14 +333,11 @@ int main(int argc, char* argv[]) {
 
         // Calculate scores
         auto scores = GetScores(weights, imgCount, rank);
-
-//        for (int i = 0; i < imgCount; i++) {
-//            std::cout << "Score: " << scores[i] << std::endl;
-//        }
-
+        std::cout << "rank: " << rank << " calculated scores\n";
 
         // TODO: delete objects
 //        delete hist;
+        std::cout << "rank: " << rank << " made it to the end\n";
     }
 
     MPI_Finalize();
