@@ -1,3 +1,4 @@
+N=Mertz_Project2
 
 build: dir main sample
 
@@ -31,11 +32,18 @@ runmain:
 runsample:
 	build/sample terry.jpg
 
+tar:
+	mkdir -p $(N)
+	cp main.cpp Makefile README.txt $(N)
+	tar -cvf $(N).tar.gz $(N)
+
 dir:
 	rm -rf build
 	mkdir build
 
 clean: dir
+	rm -rf $(N)
+	rm -f $(N).tar.gz
 	rm -f *.o
 	rm -f ../lib/*.o ../lib/*.so
 	rm -f ../ImageReader/*.o ../ImageReader/*.so

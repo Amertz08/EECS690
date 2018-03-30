@@ -198,7 +198,6 @@ int main(int argc, char* argv[]) {
         }
         exit(1);
     }
-//    std::cout << "Image count: " << imgCount << " Ranks: " << rankCount << std::endl;
 
     srand (time(NULL));
     int msgTag = 1;
@@ -240,10 +239,10 @@ int main(int argc, char* argv[]) {
         /*
          * Do rank 0 calculations
          */
-        float** weights[3];
+        auto weights = new float**[imgCount]; // Nx3x256
         weights[0] = CalculateHistogram(localImage);
         int flatSize = 256 * 3;
-        auto flatData = new float*[3];
+        auto flatData = new float*[imgCount];
         flatData[0] = FlattenHist(weights[0]);
 
         // Get data from ranks > 0
@@ -275,14 +274,32 @@ int main(int argc, char* argv[]) {
         }
 
         auto scores = GetScores(weights, imgCount, rank);
-//        PrintScores(scores, imgCount, rank);
+        auto allScores = new float*[imgCount];
+        allScores[0] = scores;
+        for (int r = 0; r < imgCount; r++) { // for each rank
+            if (r != rank) {
+                allScores[r] = new float[imgCount];
+                MPI_Recv(allScores[r], imgCount, MPI_FLOAT, r, msgTag, MPI_COMM_WORLD, &status);
+            }
+        }
+
+        for (int i = 0; i < imgCount; i++) {
+            PrintScores(allScores[i], imgCount, i);
+        }
 
 
 
         // TODO: delete objects
-//        delete[] weights;
-//        delete localImage;
+        for (int n = 0; n < imgCount; n++) { // each image
+            for (int i = 0; i < 3; i++) { // each color array
+                delete[] weights[n][i]; // delete color array
+            }
+        }
+        delete[] weights;
+        std::cout << "rank 0 made it to the end\n";
     } else {
+        MPI_Request req;
+
         // Get dimensions
         int recDims[3];
         MPI_Status status;
@@ -306,10 +323,10 @@ int main(int argc, char* argv[]) {
 
         // Send histogram back to rank 0
         int flatSize = 256 * 3;
-        auto flatData = new float*[3];
+        auto flatData = new float*[imgCount];
         flatData[rank] = flatHist;
         std::cout << "rank: " << rank << " sending histogram back to rank 0\n";
-        MPI_Send(flatHist, flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD);
+        MPI_Isend(flatHist, flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &req);
 
         // Get all other ranks data
         for (int i = 0; i < imgCount; i++) {
@@ -320,10 +337,9 @@ int main(int argc, char* argv[]) {
                 std::cout << "rank: " << rank << " received proportion data for: " << i << std::endl;
             }
         }
-        std::cout << "rank: " << rank << " made it out\n";
 
         // Unflatten data
-        float** weights[3];
+        auto weights = new float**[imgCount];
         for (int i = 0; i < imgCount; i++) {
             if (i != rank)
                 weights[i] = RebuildHist(flatData[i]);
@@ -335,8 +351,15 @@ int main(int argc, char* argv[]) {
         auto scores = GetScores(weights, imgCount, rank);
         std::cout << "rank: " << rank << " calculated scores\n";
 
+        MPI_Isend(scores, imgCount, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &req);
+
         // TODO: delete objects
-//        delete hist;
+        for (int n = 0; n < imgCount; n++) { // each image
+            for (int i = 0; i < 3; i++) { // each color array
+                delete[] weights[n][i]; // delete color array
+            }
+        }
+        delete[] weights;
         std::cout << "rank: " << rank << " made it to the end\n";
     }
 
