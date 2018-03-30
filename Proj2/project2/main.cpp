@@ -31,18 +31,26 @@ float** RebuildHist(float* h){
 
 float ArrayDiff(float* a, float* b)
 {
-    float diff = 0.0;
+    float diff = 0;
     for (int i = 0; i < 256; i++) {
-        diff += abs(a[i] - b[i]);
+//        diff += abs(a[i] - b[i]);
     }
     return diff;
 }
 
 float* ColorScore(float** a, float** b)
 {
-    auto s = new float[3]();
+    auto s = new float[3];
     for (int i = 0; i < 3; i++) {
-        s[i] = ArrayDiff(a[i], b[i]);
+//        std::cout << "i: "
+//                  << i
+//                  << " a[i][0]: "
+//                  << a[i][0]
+//                  << " b[i][0]: "
+//                  << b[i][0]
+//                  << std::endl;
+//        s[i] = ArrayDiff(a[i], b[i]);
+        ArrayDiff(a[i], b[i]);
     }
     return s;
 }
@@ -191,6 +199,13 @@ int main(int argc, char* argv[]) {
             }
         }
 
+
+        // Rebuild data
+        for (int i = 0; i < imgCount; i++) {
+            if (i != rank)
+                weights[i] = RebuildHist(flatData[i]);
+        }
+
         // Send data back out to ranks
         MPI_Request reqs[imgCount - 1];
         for (int i = 0; i < imgCount; i++) {
@@ -199,6 +214,14 @@ int main(int argc, char* argv[]) {
                 MPI_Isend(flatData[i], flatSize, MPI_FLOAT, i, msgTag, MPI_COMM_WORLD, &reqs[i - 1]);
             }
         }
+
+        auto scores = new float[imgCount]();
+        for (int i = 0; i < imgCount; i++) {
+            if (i != rank) {
+                scores[i] = Score(weights[rank], weights[i]);
+            }
+        }
+
 
 
         // TODO: delete objects
@@ -239,6 +262,24 @@ int main(int argc, char* argv[]) {
                 MPI_Recv(flatData[i], flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &status);
             }
         }
+
+        // Unflatten data
+        float** weights[3];
+        for (int i = 0; i < imgCount; i++) {
+            if (i != rank)
+                weights[i] = RebuildHist(flatData[i]);
+            else
+                weights[i] = hist;
+        }
+
+        // Get scores
+        auto scores = new float[imgCount]();
+        for (int i = 0; i < imgCount; i++) {
+            if (i != rank) {
+                scores[i] = Score(weights[rank], weights[i]);
+            }
+        }
+
 
         // TODO: delete objects
         delete hist;

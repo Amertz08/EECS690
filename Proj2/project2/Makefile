@@ -17,7 +17,7 @@ ImageLib: ../ImageReader/ImageReader.h ../ImageReader/ImageReader.c++ ../Packed3
 	(cd ../ImageReader; make)
 
 runmain:
-	mpirun -np 3 \
+	mpirun -np 2 \
 	--allow-run-as-root \
 	--mca orte_base_help_aggregate 0 \
 	build/main terry.jpeg hello.jpg
