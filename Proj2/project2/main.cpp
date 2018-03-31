@@ -126,12 +126,12 @@ float** CalculateHistogram(cryph::Packed3DArray<unsigned char>* pa)
 /**
  * Prints score array for given rank
  * @param scores : array of scores
- * @param imageCount : total images
+ * @param imgCount : total images
  * @param rank
  */
-void PrintScores(float* scores, int imageCount, int rank)
+void PrintScores(float* scores, int imgCount, int rank)
 {
-    for (int i = 0; i < imageCount; i++) {
+    for (int i = 0; i < imgCount; i++) {
         std::cout << "rank " << rank << ": scores[" << i << "]: " << scores[i] << std::endl;
     }
 }
@@ -224,6 +224,32 @@ void Print2DArray(float** arr, int x, int y)
         std::cout << "i: " << i << std::endl;
         PrintArray(arr[i], y);
     }
+}
+
+/**
+ * Finds the image most like the given rank
+ * @param scores : array of scores for the rank
+ * @param imgCount : total images
+ * @param rank : current rank
+ * @return index of image
+ */
+int FindMostLike(float* scores, int imgCount, int rank)
+{
+    int index;
+    if (rank == 0) {
+        index = 1;
+    } else {
+        index = 0;
+    }
+    float min = scores[index];
+    
+    for (int i = 0; i < imgCount; i++) {
+        if (scores[i] < min && i != rank) {
+            min = scores[i];
+            index = i;
+        }
+    }
+    return index;
 }
 
 
@@ -342,7 +368,17 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < imgCount; i++) {
             PrintScores(ScoresMatrix[i], imgCount, i);
         }
+
+        // Print out similar image
+        for (int i = 0; i < imgCount; i++) {
+            auto imgIndex = FindMostLike(ScoresMatrix[i], imgCount, i);
+            std::cout << "rank " << i << " image: " << argv[i + 1]
+                      << " is most like rank " << imgIndex
+                      << " image: " << argv[imgIndex + 1] << std::endl;
+
+        }
         std::cout << "rank 0: Finished\n";
+        // TODO: memleaks
     } else {
         MPI_Request req;
 
