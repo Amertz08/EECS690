@@ -1,7 +1,5 @@
 #include <iostream>
 #include <math.h>
-#include <vector>
-#include <string>
 #include <stdlib.h>
 #include <time.h>
 #include <mpi.h>
@@ -69,7 +67,6 @@ float* GetScores(float*** weights, int imgCount, int rank)
     for (int i = 0; i < imgCount; i++) {
         if (i != rank) {
             scores[i] = Score(weights[rank], weights[i]);
-//            scores[i] = 5;
         }
     }
     return scores;
@@ -126,14 +123,12 @@ float** CalculateHistogram(cryph::Packed3DArray<unsigned char>* pa)
     return proportions;
 }
 
-void print_imgs(std::vector<std::string>* l)
-{
-    std::cout << "Image list\n";
-    for (auto const& entry : *l) {
-        std::cout << entry << std::endl;
-    }
-}
-
+/**
+ * Prints score array for given rank
+ * @param scores : array of scores
+ * @param imageCount : total images
+ * @param rank
+ */
 void PrintScores(float* scores, int imageCount, int rank)
 {
     for (int i = 0; i < imageCount; i++) {
@@ -141,6 +136,14 @@ void PrintScores(float* scores, int imageCount, int rank)
     }
 }
 
+/**
+ * Takes in [r * c] length array and
+ * transforms it into [r][c] array
+ * @param data : 1D array
+ * @param r : row count
+ * @param c : column count
+ * @return [r][c] array
+ */
 float** UnFlatten2D(float* data, int r, int c)
 {
     auto d = new float*[r];
@@ -154,11 +157,11 @@ float** UnFlatten2D(float* data, int r, int c)
 }
 
 /**
- * axb -> [a*b]
- * @param data
- * @param r : row
- * @param c : column
- * @return
+ * Takes [r][c] 2D array and makes [r * c] array
+ * @param data : 2D array
+ * @param r : row count
+ * @param c : column count
+ * @return [r * c] array
  */
 float* Flatten2D(float** data, int r, int c)
 {
@@ -171,6 +174,15 @@ float* Flatten2D(float** data, int r, int c)
     return d;
 }
 
+/**
+ * Takes in histogram data from other ranks and merges it with
+ * the local ranks histogram data
+ * @param f : imgCount * 768 length array of normalized frequencies
+ * @param localHist : 3 x 256 length array of normalized frequencies
+ * @param imgCount : Total images
+ * @param rank : current rank
+ * @return imgCount x 3 x 256 array of normalized frequency data
+ */
 float*** BuildWeights(float* f, float** localHist, int imgCount, int rank)
 {
     auto ss = UnFlatten2D(f, imgCount, 768); // imgCount * 768 -> imgCount x 768
@@ -187,6 +199,11 @@ float*** BuildWeights(float* f, float** localHist, int imgCount, int rank)
     return weights;
 }
 
+/**
+ * Prints 1d array on same line
+ * @param arr : array to print
+ * @param size : size of array
+ */
 void PrintArray(float* arr, int size)
 {
     for (int i = 0; i < size; i++) {
@@ -195,6 +212,12 @@ void PrintArray(float* arr, int size)
     std::cout << std::endl;
 }
 
+/**
+ * Prints 2D array
+ * @param arr : array to print
+ * @param x : row count
+ * @param y : column count
+ */
 void Print2DArray(float** arr, int x, int y)
 {
     for (int i = 0; i < x; i++) {
