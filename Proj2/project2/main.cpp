@@ -9,37 +9,6 @@
 #include "ImageReader.h"
 
 /**
- * Flattens 3x256 into 768 float array
- * @param h : float[3][256]
- * @return : float[768]
- */
-float* FlattenHist(float **h)
-{
-    auto data = new float[256 * 3];
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 256; j++) {
-            data[j + i * 256] = h[i][j];
-        }
-    }
-}
-
-/**
- * Takes 768 length histogram and rebuilds to 3x256
- * @param h : float[768]
- * @return : float[3][256]
- */
-float** RebuildHist(float* h){
-    auto colors = new float*[3];
-    for(int i = 0; i < 3; i++) {
-        colors[i] = new float[256];
-        for (int j = 0; j < 256; j++) {
-            colors[i][j] = h[j + i * 256];
-        }
-    }
-    return colors;
-}
-
-/**
  * Sum of the magnitude difference in two normalized histograms of color
  * @param a : normalized histogram of a specific color
  * @param b : normalized histogram of a specific color
@@ -49,7 +18,7 @@ float ArrayDiff(float* a, float* b)
 {
     float diff = 0;
     for (int i = 0; i < 256; i++) {
-        diff += abs(a[i] - b[i]);
+        diff += fabs(a[i] - b[i]);
     }
     return diff;
 }
@@ -100,6 +69,7 @@ float* GetScores(float*** weights, int imgCount, int rank)
     for (int i = 0; i < imgCount; i++) {
         if (i != rank) {
             scores[i] = Score(weights[rank], weights[i]);
+//            scores[i] = 5;
         }
     }
     return scores;
@@ -140,7 +110,7 @@ float** CalculateHistogram(cryph::Packed3DArray<unsigned char>* pa)
     auto colorCount = ColorCount(pa);
     auto proportions = new float*[3];
 
-    auto denominator = (float)pa->getTotalNumberElements() / 3;
+    auto denominator = (float)(pa->getTotalNumberElements()) / 3;
 
     for (int i = 0; i < 3; i++) {
         proportions[i] = new float[256]();
@@ -169,6 +139,36 @@ void PrintScores(float* scores, int imageCount, int rank)
     for (int i = 0; i < imageCount; i++) {
         std::cout << "rank: " << rank << " scores[" << i << "]: " << scores[i] << std::endl;
     }
+}
+
+float** UnFlatten2D(float* data, int r, int c)
+{
+    auto d = new float*[r];
+    for (int i = 0; i < r; i++) {
+        d[i] = new float[c];
+        for (int j = 0; j < c; j++) {
+            d[i][j] = data[j + (i * c)];
+        }
+    }
+    return d;
+}
+
+/**
+ * axb -> [a*b]
+ * @param data
+ * @param r : row
+ * @param c : column
+ * @return
+ */
+float* Flatten2D(float** data, int r, int c)
+{
+    auto d = new float[r * c];
+    for (int i = 0; i < r; i++) {
+        for (int j = 0; j < c; j++) {
+            d[j + (i * c)] = data[i][j];
+        }
+    }
+    return d;
 }
 
 
@@ -201,6 +201,7 @@ int main(int argc, char* argv[]) {
 
     srand (time(NULL));
     int msgTag = 1;
+    int flatSize = 256  * 3;
     if (rank == 0) {
 
         cryph::Packed3DArray<unsigned char>* localImage;
@@ -239,63 +240,62 @@ int main(int argc, char* argv[]) {
         /*
          * Do rank 0 calculations
          */
-        auto weights = new float**[imgCount]; // Nx3x256
-        weights[0] = CalculateHistogram(localImage);
-        int flatSize = 256 * 3;
-        auto flatData = new float*[imgCount];
-        flatData[0] = FlattenHist(weights[0]);
+        auto hist = CalculateHistogram(localImage); // 3 x 256
+        auto flatHist = Flatten2D(hist, 3, 256); // 1 x 768
+
 
         // Get data from ranks > 0
         MPI_Status status;
+        std::cout << "Gathering proportion data from other processes\n";
+        auto recFlat = new float[(imgCount - 1) * flatSize];
+        MPI_Gather(nullptr, 0, MPI_FLOAT, recFlat, flatSize, MPI_FLOAT, rank, MPI_COMM_WORLD);
+
+
+        // store data
+        auto flatData = new float*[imgCount]; // imgCount x 768
         for (int i = 0; i < imgCount; i++) {
-            if (i != rank) {
-                flatData[i] = new float[flatSize];
-                std::cout << "rank: 0 getting proportion data from " << i << std::endl;
-                MPI_Recv(flatData[i], flatSize, MPI_FLOAT, i, msgTag, MPI_COMM_WORLD, &status);
-            }
+            if (i != rank)
+                flatData[i] = &recFlat[i - 1]; // 1 x 768
+            else
+                flatData[i] = flatHist;
         }
 
-        // Send data back out to ranks
-        for (int r = 0; r < imgCount; r++) { // For each rank
-            std::cout << "Sending proportion data to rank: " << r << std::endl;
-            for (int i = 0; i < imgCount; i++) { // Send each image except its own
-                if (i != r) { // When target rank isn't data rank
-                    std::cout << "sending i: " << i << " to: " << r << std::endl;
-                    MPI_Send(flatData[i], flatSize, MPI_FLOAT, r, msgTag, MPI_COMM_WORLD); // (imgCount - 1) ** 2 sends
-                }
-            }
-        }
+
+
+        auto flat = Flatten2D(flatData, imgCount, flatSize); // imgCount * 768
+        std::cout << "Sending data back out to ranks\n";
+        MPI_Allgather(flat, imgCount * flatSize, MPI_FLOAT, nullptr, 0, MPI_FLOAT, MPI_COMM_WORLD);
+        std::cout << "Data sent\n";
 
 
         // Rebuild data
+        auto weights = new float**[imgCount]; // Nx3x256
         for (int i = 0; i < imgCount; i++) {
-            if (i != rank)
-                weights[i] = RebuildHist(flatData[i]);
-        }
-
-        auto scores = GetScores(weights, imgCount, rank);
-        auto allScores = new float*[imgCount];
-        allScores[0] = scores;
-        for (int r = 0; r < imgCount; r++) { // for each rank
-            if (r != rank) {
-                allScores[r] = new float[imgCount];
-                MPI_Recv(allScores[r], imgCount, MPI_FLOAT, r, msgTag, MPI_COMM_WORLD, &status);
+            if (i != rank) {
+                std::cout << "rank 0 rebuilding: " << i << std::endl;
+                weights[i] = UnFlatten2D(flat, imgCount, 768); // imgCount x 768
+            } else {
+                weights[i] = hist;
             }
         }
 
+        // Get scores from other ranks
+        auto scores = GetScores(weights, imgCount, rank); // 1 x imgCount
         for (int i = 0; i < imgCount; i++) {
-            PrintScores(allScores[i], imgCount, i);
+            std::cout << "rank 0 score: " << scores[i] << std::endl;
+        }
+        auto allScores = new float[imgCount * imgCount];
+        // receiving imgCount * imgCount
+        MPI_Gather(nullptr, 0, MPI_FLOAT, allScores, imgCount, MPI_FLOAT, 0, MPI_COMM_WORLD);
+        auto blah = UnFlatten2D(allScores, imgCount, imgCount);
+
+        for (int i = 0; i < imgCount * imgCount; i++) {
+            std::cout << allScores[i] << std::endl;
         }
 
-
-
-        // TODO: delete objects
-        for (int n = 0; n < imgCount; n++) { // each image
-            for (int i = 0; i < 3; i++) { // each color array
-                delete[] weights[n][i]; // delete color array
-            }
+        for (int i = 0; i < imgCount; i++) {
+            PrintScores(blah[i], imgCount, i);
         }
-        delete[] weights;
         std::cout << "rank 0 made it to the end\n";
     } else {
         MPI_Request req;
@@ -318,31 +318,30 @@ int main(int argc, char* argv[]) {
         cryph::Packed3DArray<unsigned char> array(recDims[0], recDims[1], recDims[2], dataBuffer);
         delete[] dataBuffer;
 
-        auto hist = CalculateHistogram(&array);
-        auto flatHist = FlattenHist(hist);
+        auto hist = CalculateHistogram(&array); // 3 x 256
+        auto flatHist = Flatten2D(hist, 3, 256); // 1 x 768
 
-        // Send histogram back to rank 0
-        int flatSize = 256 * 3;
-        auto flatData = new float*[imgCount];
+        // Send histograms back to rank 0
+        auto flatData = new float*[imgCount]; // imgCount x 768
         flatData[rank] = flatHist;
         std::cout << "rank: " << rank << " sending histogram back to rank 0\n";
-        MPI_Isend(flatHist, flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &req);
+        MPI_Gather(flatHist, flatSize, MPI_FLOAT, nullptr, 0, MPI_FLOAT, 0, MPI_COMM_WORLD);
+        std::cout << "rank: " << rank << " histogram sent\n";
 
         // Get all other ranks data
-        for (int i = 0; i < imgCount; i++) {
-            if (i != rank) {
-                std::cout << "rank: " << rank << " waiting on proportion data for: " << i << std::endl;
-                flatData[i] = new float[flatSize];
-                MPI_Recv(flatData[i], flatSize, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &status); // (imgCount - 1) ** 2 Rec
-                std::cout << "rank: " << rank << " received proportion data for: " << i << std::endl;
-            }
-        }
+        auto flat = new float[flatSize * imgCount]; // imgCount * 768
+        std::cout << "rank: " << rank << " waiting on other rank data\n";
+        MPI_Allgather(nullptr, 0, MPI_FLOAT, flat, imgCount * flatSize, MPI_FLOAT, MPI_COMM_WORLD);
+        std::cout << "rank: " << rank << " received data on other ranks\n";
+
+        auto ss = UnFlatten2D(flat, imgCount, flatSize); // imgCount x 768
+
 
         // Unflatten data
-        auto weights = new float**[imgCount];
+        auto weights = new float**[imgCount]; // imgCount x 3 x 256
         for (int i = 0; i < imgCount; i++) {
             if (i != rank)
-                weights[i] = RebuildHist(flatData[i]);
+                weights[i] = UnFlatten2D(ss[i], imgCount, 768); // imgCount x 768 -> 3 x 256
             else
                 weights[i] = hist;
         }
@@ -351,15 +350,13 @@ int main(int argc, char* argv[]) {
         auto scores = GetScores(weights, imgCount, rank);
         std::cout << "rank: " << rank << " calculated scores\n";
 
-        MPI_Isend(scores, imgCount, MPI_FLOAT, 0, msgTag, MPI_COMM_WORLD, &req);
+        for (int i = 0; i < imgCount; i++) {
+            std::cout << "rank: " << rank << " scores: " << scores[i] << std::endl;
+        }
+
+        MPI_Gather(scores, imgCount, MPI_FLOAT, nullptr, 0, MPI_FLOAT, 0, MPI_COMM_WORLD); // sending 1 x imgCount
 
         // TODO: delete objects
-        for (int n = 0; n < imgCount; n++) { // each image
-            for (int i = 0; i < 3; i++) { // each color array
-                delete[] weights[n][i]; // delete color array
-            }
-        }
-        delete[] weights;
         std::cout << "rank: " << rank << " made it to the end\n";
     }
 
