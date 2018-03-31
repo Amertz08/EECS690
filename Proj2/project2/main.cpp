@@ -6,6 +6,25 @@
 
 #include "ImageReader.h"
 
+#define DEBUG 1
+#define COLORS 3
+#define RANGE 256
+
+/**
+ * Find sum of given array
+ * @param arr
+ * @param size
+ * @return
+ */
+float SumArray(float* arr, int size)
+{
+    float s = 0.00;
+    for (int i = 0; i < size; i++) {
+        s += arr[i];
+    }
+    return s;
+}
+
 /**
  * Sum of the magnitude difference in two normalized histograms of color
  * @param a : normalized histogram of a specific color
@@ -15,7 +34,12 @@
 float ArrayDiff(float* a, float* b)
 {
     float diff = 0;
-    for (int i = 0; i < 256; i++) {
+#if DEBUG
+    auto sumA = SumArray(a, RANGE);
+    auto sumB = SumArray(b, RANGE);
+    std::cout << "sumA: " << sumA << " sumB: " << sumB << std::endl;
+#endif
+    for (int i = 0; i < RANGE; i++) {
         diff += fabs(a[i] - b[i]);
     }
     return diff;
@@ -29,8 +53,8 @@ float ArrayDiff(float* a, float* b)
  */
 float* ColorScore(float** a, float** b)
 {
-    auto s = new float[3];
-    for (int i = 0; i < 3; i++) {
+    auto s = new float[COLORS];
+    for (int i = 0; i < COLORS; i++) {
         s[i] = ArrayDiff(a[i], b[i]);
     }
     return s;
@@ -46,7 +70,7 @@ float Score(float** a, float** b)
 {
     auto scores = ColorScore(a, b);
     float s = 0.0;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < COLORS; i++) {
         s += scores[i];
     }
     delete[] scores;
@@ -79,9 +103,9 @@ float* GetScores(float*** weights, int imgCount, int rank)
  */
 int** ColorCount(cryph::Packed3DArray<unsigned char>* pa)
 {
-    auto colorCount = new int*[3];
-    for (int i = 0; i < 3; i++) {
-        colorCount[i] = new int[256]();
+    auto colorCount = new int*[COLORS];
+    for (int i = 0; i < COLORS; i++) {
+        colorCount[i] = new int[RANGE]();
     }
     // Tally color count
     for (int r = 0; r < pa->getDim1(); r++) {
@@ -105,18 +129,22 @@ float** CalculateHistogram(cryph::Packed3DArray<unsigned char>* pa)
 {
 
     auto colorCount = ColorCount(pa);
-    auto proportions = new float*[3];
+    auto proportions = new float*[COLORS];
 
     auto denominator = pa->getTotalNumberElements() / 3.0;
 
-    for (int i = 0; i < 3; i++) {
-        proportions[i] = new float[256]();
-        for (int j = 0; j < 255; j++) {
+    for (int i = 0; i < COLORS; i++) {
+        proportions[i] = new float[RANGE]();
+        for (int j = 0; j < RANGE; j++) {
             proportions[i][j] = colorCount[i][j] / denominator;
         }
+#if DEBUG
+        auto sum = SumArray(proportions[i], RANGE);
+        std::cout << "i: " << i << " sum: " << sum << "\n";
+#endif
     }
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < COLORS; i++) {
         delete[] colorCount[i];
     }
     delete[] colorCount;
@@ -191,7 +219,7 @@ float*** BuildWeights(float* f, float** localHist, int imgCount, int rank)
     auto weights = new float**[imgCount]; // Nx3x256
     for (int i = 0; i < imgCount; i++) {
         if (i != rank) {
-            weights[i] = UnFlatten2D(ss[i], 3, 768); // 1 x 768 -> 3 x 256
+            weights[i] = UnFlatten2D(ss[i], COLORS, 768); // 1 x 768 -> 3 x 256
         } else {
             weights[i] = localHist;
         }
@@ -281,7 +309,7 @@ int main(int argc, char* argv[]) {
     }
 
     int msgTag = 1;
-    int flatSize = 256  * 3;
+    int flatSize = RANGE  * COLORS;
     if (rank == 0) {
 
         // Read in each image
@@ -324,7 +352,7 @@ int main(int argc, char* argv[]) {
          * Do rank 0 calculations
          */
         auto hist = CalculateHistogram(localImage); // 3 x 256
-        auto flatHist = Flatten2D(hist, 3, 256); // 1 x 768
+        auto flatHist = Flatten2D(hist, COLORS, RANGE); // 1 x 768
 
 
         // Get data from ranks > 0
@@ -401,7 +429,7 @@ int main(int argc, char* argv[]) {
 
         // Do histogram calculations
         auto hist = CalculateHistogram(&array); // 3 x 256
-        auto flatHist = Flatten2D(hist, 3, 256); // 1 x 768
+        auto flatHist = Flatten2D(hist, COLORS, RANGE); // 1 x 768
 
         // Send histograms back to rank 0
         std::cout << "rank " << rank << ": sending histogram back to rank 0\n";
