@@ -1,4 +1,4 @@
-N=Mertz_Project2
+N=EECS_690Mertz_Project2
 
 build: dir main sample
 
