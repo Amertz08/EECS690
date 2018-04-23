@@ -4,3 +4,4 @@ project(EECS690)
 set(CMAKE_CXX_STANDARD 11)
 
 add_subdirectory(Proj1)
+add_subdirectory(Proj3)
