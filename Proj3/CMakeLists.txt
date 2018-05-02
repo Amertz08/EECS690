@@ -1,1 +1,2 @@
-add_executable(Proj3 main.cpp)
+file(GLOB SRC *.*pp)
+add_executable(Proj3 ${SRC})

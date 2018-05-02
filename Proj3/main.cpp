@@ -1,13 +1,17 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 
 #ifdef __APPLE__
     #include <OpenCL/opencl.h>
+
 #else
     #include <CL/opencl.h>
 #endif
 
 #define DEBUG true
+
+#include "ImageWriter.h"
 
 #include "helpers.hpp"
 
@@ -165,8 +169,60 @@ void print_devices(cl_device_id* devices, int deviceCount)
 
 
 
-
 int main (int argc, char* argv[]) {
+
+    if (argc != 7) {
+        std::cerr << "Invalid parameters\n";
+        exit(1);
+    }
+
+    int outRows, outCols;
+    int rows = std::stoi(argv[1]);
+    int cols = std::stoi(argv[2]);
+    int sheets = std::stoi(argv[3]);
+    std::string fileName = argv[4];
+    int projectionType = std::stoi(argv[5]);
+    std::string fileBase = argv[6];
+
+    // Determine projection size
+    int projSize;
+    if (projectionType == 1 || projectionType == 2) {
+        projSize = rows * cols;
+        outRows = rows;
+        outCols = cols;
+    }
+    else if (projectionType == 3 || projectionType == 4) {
+        projSize = cols * sheets;
+        outRows = rows;
+        outCols = sheets;
+    }
+    else if (projectionType == 5 || projectionType == 6) {
+        projSize = rows * sheets;
+        outRows = sheets;
+        outCols = cols;
+    }
+
+    // Read file
+    auto fileSize = rows * cols * sheets;
+    unsigned char* data;
+    std::ifstream file;
+    file.open(fileName, std::ios::in | std::ios::binary);
+
+    if (file.is_open()) {
+        data = new unsigned char[fileSize];
+        std::cout << "Filed opened\n";
+        file.read(reinterpret_cast<char*>(data), fileSize);
+        file.close();
+
+    } else {
+        std::cerr << "File did not open\n";
+        exit(1);
+    }
+
+    // Create max and sum results
+    auto maxImg = new int[projSize];
+    auto sumImg = new unsigned char[projSize];
+    auto workSum = new float[projSize];
 
     // Get platform info
     cl_uint numPlatforms = 0;
@@ -191,38 +247,114 @@ int main (int argc, char* argv[]) {
 
     print_devices(devices, numDevices);
 
+    int device;
+    while (true) {
+        std::cout << "Pick device: ";
+        std::cin >> device;
+        if (0 <= device && device < numDevices)
+            break;
+    }
+
     // Create context
     cl_context context = clCreateContext(nullptr, numDevices, devices, nullptr, nullptr, &status);
     checkStatus("clCreateContext", status, true, DEBUG);
 
     // Create command queue for specified device
-    cl_command_queue cmdQueue = clCreateCommandQueue(context, devices[0], 0, &status);
+    cl_command_queue cmdQueue = clCreateCommandQueue(context, devices[device], 0, &status);
     checkStatus("clCreateCommandQueue", status, true, DEBUG);
 
+    // Create buffer to send image data to kernel
+    auto buffSize = fileSize * sizeof(unsigned char);
+    auto imgBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY, buffSize, nullptr, &status);
+    checkStatus("clCreateBuffer-imgBuffer", status, true, DEBUG);
+
+    // Write image data to buffer
+    status = clEnqueueWriteBuffer(cmdQueue, imgBuffer, CL_FALSE, 0, buffSize, data, 0, nullptr, nullptr);
+    checkStatus("clEnqueueWriteBuffer-imgBuffer", status, true, DEBUG);
+
+    // Create buffer to put max results in
+    auto projBuffSize = projSize * sizeof(int);
+    auto maxBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, projBuffSize, nullptr, &status);
+    checkStatus("clCreateBuffer-maxBuffer", status, true, DEBUG);
+
+    // Create buffer for working sum buffer
+    auto workingBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, projBuffSize, nullptr, &status);
+    checkStatus("clCreateBuffer-workingBuffer", status, true, DEBUG);
+
+    // Create sum buffer
+    auto sumBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, projBuffSize, nullptr, &status);
+    checkStatus("clCreateBuffer-sumBuffer", status, true, DEBUG);
+
     // Get program
-    const char* programSource[] = { readSource("HelloOpenCL.cl") };
+    const char* programSource[] = { readSource("MaxKernel.cl") };
     cl_program program = clCreateProgramWithSource(context, 1, programSource, nullptr, &status);
     checkStatus("clCreateProgramWithSource", status, true, DEBUG);
 
     status = clBuildProgram(program, numDevices, devices,
                             nullptr, nullptr, nullptr);
     if (status != 0)
-        showProgramBuildLog(program, devices[0]);
+        showProgramBuildLog(program, devices[device]);
     checkStatus("clBuildProgram", status, true, DEBUG);
 
-    // Create Kernel
-    cl_kernel kernel = clCreateKernel(program, "helloOpenCL", &status);
+    // Create Kernel 1
+    cl_kernel kernel = clCreateKernel(program, "MaxKernel", &status);
+
+    // Set Kernel 1 args
+    status = clSetKernelArg(kernel, 0, sizeof(int), &sheets);
+    checkStatus("clSetKernelArg-0", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 1, sizeof(int), &cols);
+    checkStatus("clSetKernelArg-1", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 2, sizeof(int), &rows);
+    checkStatus("clSetKernelArg-2", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 3, sizeof(int), &projectionType);
+    checkStatus("clSetKernelArg-3", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 4, sizeof(cl_mem), &imgBuffer);
+    checkStatus("clSetKernelArg-4", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 5, sizeof(cl_mem), &maxBuffer);
+    checkStatus("clSetKernelArg-5", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 6, sizeof(cl_mem), &workingBuffer);
+    checkStatus("clSetKernelArg-6", status, true, DEBUG);
+
+    // Set processing size
+    size_t global_work_size[] = { 256, 256 };
+    size_t* global_work_offset = nullptr;
+    size_t* local_work_size = nullptr;
+
+    // Run Kernel 1
+    status = clEnqueueNDRangeKernel(
+            cmdQueue,
+            kernel,
+            2,
+            global_work_offset,
+            global_work_size,
+            local_work_size,
+            0,
+            nullptr,
+            nullptr
+        );
+
+    // Read data back
+    clEnqueueReadBuffer(cmdQueue, maxBuffer, CL_TRUE, 0, projBuffSize, maxImg, 0, nullptr, nullptr);
+
+    auto ImgWriter = ImageWriter::create("test.jpeg", outCols, outRows);
 
     // block until all commands have finished execution
     clFinish(cmdQueue);
 
     // Free OpenCL resources
+    clReleaseMemObject(imgBuffer);
+    clReleaseMemObject(maxBuffer);
+    clReleaseMemObject(sumBuffer);
+    clReleaseMemObject(workingBuffer);
     clReleaseKernel(kernel);
     clReleaseProgram(program);
     clReleaseCommandQueue(cmdQueue);
     clReleaseContext(context);
 
     // Clean up
+    delete[] data;
+    delete[] maxImg;
+    delete[] sumImg;
     delete[] platforms;
     delete[] devices;
 }
