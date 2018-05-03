@@ -206,7 +206,7 @@ int main (int argc, char* argv[]) {
     auto fileSize = rows * cols * sheets;
     unsigned char* data;
     std::ifstream file;
-    file.open(fileName, std::ios::in | std::ios::binary);
+    file.open(fileName);
 
     if (file.is_open()) {
         data = new unsigned char[fileSize];
@@ -298,6 +298,7 @@ int main (int argc, char* argv[]) {
 
     // Create Kernel 1
     cl_kernel kernel = clCreateKernel(program, "MaxKernel", &status);
+    checkStatus("clCreateKernel", status, true, DEBUG);
 
     // Set Kernel 1 args
     status = clSetKernelArg(kernel, 0, sizeof(int), &sheets);
