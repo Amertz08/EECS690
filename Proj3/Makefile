@@ -2,35 +2,52 @@ G = g++ -g -std=c++11 -Wall
 M = build/main.o
 BIN = build/main
 NAME := $(shell uname -s)
-LIB = ./lib/libCOGLImageWriter.so
 
 # If mac
 ifeq ($(NAME), Darwin)
 F = -framework OpenCL
+LIB = lib/libCOGLImageWriter.dylib
+EXTRA = $(G) -dynamiclib \
+			-o $(LIB) \
+			ImageWriter/BMPImageWriter.o \
+			ImageWriter/ImageWriter.o \
+			ImageWriter/JPEGImageWriter.o \
+			ImageWriter/PNGImageWriter.o \
+			-l png \
+			-l jpeg
 endif
 
 # If linux
 ifeq ($(NAME), Linux)
 F = -l OpenCL
+LIB = lib/libCOGLImageWriter.so
 endif
 
 
 build: dir main
 
 run:
-	$(BIN) 256 256 256 ./voxeldata/aneurism.raw 1 jpeg
+	$(BIN) 256 256 256 voxeldata/aneurism.raw 1 jpeg
 
+# Make binary
 main: main.o imglib
-	$(G) $(M) $(LIB) -o $(BIN) $(F)
+	$(G) $(M) $(F) -l $(LIB) -o $(BIN)
 
 main.o:
-	$(G) -I ./ImageWriter -c main.cpp -o $(M)
+	$(G) -I ImageWriter -c main.cpp -o $(M)
 
+# Builds ImageWriter shared lib
 imglib:
-	(cd ./ImageWriter; make)
+	(cd ImageWriter; make)
+	$(EXTRA)
+
+libdir:
+	rm -rf lib
+	mkdir lib
 
 dir:
 	rm -rf build
 	mkdir build
 
-clean: dir
+clean: dir libdir
+	rm -rf ImageWriter/*.o ImageWriter/*.so
