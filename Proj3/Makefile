@@ -29,15 +29,18 @@ build: dir main
 run:
 	$(BIN) 256 256 256 voxeldata/aneurism.raw 1 jpeg
 
+gdb:
+	gdb $(BIN)
+
 # Make binary
 main: main.o imglib
-	$(G) $(M) $(F) -l $(LIB) -o $(BIN)
+	$(G) $(M) $(LIB) $(F) -o $(BIN)
 
 main.o:
 	$(G) -I ImageWriter -c main.cpp -o $(M)
 
 # Builds ImageWriter shared lib
-imglib:
+imglib: libdir
 	(cd ImageWriter; make)
 	$(EXTRA)
 

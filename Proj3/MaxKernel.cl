@@ -1,6 +1,6 @@
 
 __kernel
-void MaxKernel(int depth, int cols, int rows, int projType, __global const unsigned char* img, __global int* maxArr, __global float* workSum)
+void MaxKernel(int depth, int cols, int rows, int projType, __global const unsigned char* img, __global unsigned char* maxArr, __global float* workSum)
 {
     int x, y, z, rowCount, colCount, maxOffset;
     int idx = get_global_id(0);
@@ -66,9 +66,9 @@ void MaxKernel(int depth, int cols, int rows, int projType, __global const unsig
             max = val;
             maxOffset = x * y;
         }
-        sum += ((i + 1) / depth) * val;
+        // sum += ((i + 1) / depth) * val;
     }
 
-    maxArr[maxOffset] = max;
+    maxArr[maxOffset] = (unsigned char)max;
 //    workSum[col * row] = sum;
 }

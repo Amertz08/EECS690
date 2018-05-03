@@ -219,8 +219,8 @@ int main (int argc, char* argv[]) {
         exit(1);
     }
 
-    // Create max and sum results
-    auto maxImg = new int[projSize];
+    // Create max, working sum, and sum results arrays
+    auto maxImg = new unsigned char[projSize];
     auto sumImg = new unsigned char[projSize];
     auto workSum = new float[projSize];
 
@@ -273,17 +273,17 @@ int main (int argc, char* argv[]) {
     checkStatus("clEnqueueWriteBuffer-imgBuffer", status, true, DEBUG);
 
     // Create buffer to put max results in
-    auto projBuffSize = projSize * sizeof(int);
-    auto maxBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, projBuffSize, nullptr, &status);
+    auto maxBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, buffSize, nullptr, &status);
     checkStatus("clCreateBuffer-maxBuffer", status, true, DEBUG);
 
+    // Create sum buffer
+    auto sumBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, buffSize, nullptr, &status);
+    checkStatus("clCreateBuffer-sumBuffer", status, true, DEBUG);
+
     // Create buffer for working sum buffer
+    auto projBuffSize = projSize * sizeof(float);
     auto workingBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, projBuffSize, nullptr, &status);
     checkStatus("clCreateBuffer-workingBuffer", status, true, DEBUG);
-
-    // Create sum buffer
-    auto sumBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, projBuffSize, nullptr, &status);
-    checkStatus("clCreateBuffer-sumBuffer", status, true, DEBUG);
 
     // Get program
     const char* programSource[] = { readSource("MaxKernel.cl") };
@@ -318,6 +318,7 @@ int main (int argc, char* argv[]) {
     // Set processing size
     size_t global_work_size[] = { 256, 256 };
     size_t* global_work_offset = nullptr;
+    // size_t local_work_size[] = { 32, 32 };
     size_t* local_work_size = nullptr;
 
     // Run Kernel 1
@@ -332,11 +333,13 @@ int main (int argc, char* argv[]) {
             nullptr,
             nullptr
         );
+    checkStatus("clEnqueueNDRangeKernel-1", status, true, DEBUG);
 
     // Read data back
-    clEnqueueReadBuffer(cmdQueue, maxBuffer, CL_TRUE, 0, projBuffSize, maxImg, 0, nullptr, nullptr);
-
-    auto ImgWriter = ImageWriter::create("test.jpeg", outCols, outRows);
+    clEnqueueReadBuffer(cmdQueue, maxBuffer, CL_TRUE, 0, buffSize, maxImg, 0, nullptr, nullptr);
+    //
+    // auto ImgWriter = ImageWriter::create("test.jpeg", outCols, outRows);
+    // ImgWriter->writeImage(maxImg);
 
     // block until all commands have finished execution
     clFinish(cmdQueue);
