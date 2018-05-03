@@ -27,7 +27,7 @@ endif
 build: dir main
 
 run:
-	$(BIN) 256 256 256 voxeldata/aneurism.raw 1 jpeg
+	$(BIN) 256 256 256 voxeldata/aneurism.raw 1 aneurism
 
 gdb:
 	gdb $(BIN)

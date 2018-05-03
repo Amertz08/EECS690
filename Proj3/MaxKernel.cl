@@ -1,4 +1,7 @@
-
+/*
+    Calculates the max image by getting the max value in the voxelf fore the specific
+    pixel as well as calculates the working sum of our weighted scoring calculation.
+*/
 __kernel
 void MaxKernel(int depth, int cols, int rows, int projType, __global const unsigned char* img, __global unsigned char* maxArr, __global float* workSum)
 {
@@ -39,28 +42,28 @@ void MaxKernel(int depth, int cols, int rows, int projType, __global const unsig
                 z = i;
                 break;
             case 2:
-                x = (cols - idx);
+                x = (colCount - idx);
                 y = idy;
-                z = (depth - i);
+                z = (sheetCount - i);
                 break;
             case 3:
                 x = i;
                 y = idy;
-                z = (cols - idx);
+                z = (colCount - idx);
                 break;
             case 4:
-                x = (depth - i);
+                x = (sheetCount - i);
                 y = idy;
                 z = idx;
                 break;
             case 5:
                 x = idx;
                 y = i;
-                z = (rows - idy);
+                z = (rowCount - idy);
                 break;
             case 6:
                 x = idx;
-                y = (depth - i);
+                y = (sheetCount - i);
                 z = idy;
                 break;
             default: // TODO: exit Kernel?
@@ -73,11 +76,11 @@ void MaxKernel(int depth, int cols, int rows, int projType, __global const unsig
         // See if value is max
         if (val > max) {
             max = val;
-            maxOffset = x * y;
         }
-        // sum += ((i + 1) / depth) * val;
+        sum += ((i + 1) / sheetCount) * val;
     }
 
-    maxArr[maxOffset] = (unsigned char)max;
-//    workSum[col * row] = sum;
+    auto ndx = idx * colCount + idy;
+    maxArr[ndx] = (unsigned char)max;
+    workSum[ndx] = sum;
 }

@@ -182,7 +182,7 @@ int main (int argc, char* argv[]) {
     int sheets = std::stoi(argv[3]);
     std::string fileName = argv[4];
     int projectionType = std::stoi(argv[5]);
-    std::string fileBase = argv[6];
+    std::string outFileName = argv[6];
 
     // Determine projection size
     int projSize;
@@ -281,11 +281,11 @@ int main (int argc, char* argv[]) {
     checkStatus("clCreateBuffer-sumBuffer", status, true, DEBUG);
 
     // Create buffer for working sum buffer
-    auto projBuffSize = projSize * sizeof(float);
-    auto workingBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, projBuffSize, nullptr, &status);
+    auto workBuffSize = projSize * sizeof(float);
+    auto workingBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, workBuffSize, nullptr, &status);
     checkStatus("clCreateBuffer-workingBuffer", status, true, DEBUG);
 
-    // Get program
+    // Get kernel 1
     const char* programSource[] = { readSource("MaxKernel.cl") };
     cl_program program = clCreateProgramWithSource(context, 1, programSource, nullptr, &status);
     checkStatus("clCreateProgramWithSource", status, true, DEBUG);
@@ -336,21 +336,93 @@ int main (int argc, char* argv[]) {
         );
     checkStatus("clEnqueueNDRangeKernel-1", status, true, DEBUG);
 
-    // Read data back
-    clEnqueueReadBuffer(cmdQueue, maxBuffer, CL_TRUE, 0, buffSize, maxImg, 0, nullptr, nullptr);
-    //
-    // auto ImgWriter = ImageWriter::create("test.jpeg", outCols, outRows);
-    // ImgWriter->writeImage(maxImg);
+    /*
+    Read data back
+    TODO: this is where I seg fault. I've doubled checked sizes and parameters agaisnt
+    provided examples as well as tried to change the 5th parameter to 'progSize' which
+    did not cause a seg fault but the max image prints nothing and there is no working
+    sum max
+    */
+    clEnqueueReadBuffer(cmdQueue, maxBuffer, CL_FALSE, 0, buffSize, maxImg, 0, nullptr, nullptr);
+    clEnqueueReadBuffer(cmdQueue, workingBuffer, CL_FALSE, 0, workBuffSize, workSum, 0, nullptr, nullptr);
 
-    // block until all commands have finished execution
+    // Block until finished
     clFinish(cmdQueue);
+    clReleaseKernel(kernel);
+    clReleaseProgram(program);
+
+    // Write max image
+    auto ImgWriter = ImageWriter::create(outFileName + "Max.jpeg", outCols, outRows);
+    ImgWriter->writeImage(maxImg);
+    delete ImgWriter;
+
+    // Find max of working sum
+    float max = 0.00;
+    for (int x = 0; x < outCols; x++) {
+        for (int y = 0; y < outRows; y++) {
+            auto idx = x * cols + y;
+            auto val = workSum[idx];
+            if (val > max) {
+                max = val;
+            }
+        }
+    }
+    std::cout << "Max sum value: " << max << std::endl;
+
+    // Get kernel 2
+    const char* sumSource[] = { readSource("SumKernel.cl") };
+    program = clCreateProgramWithSource(context, 1, sumSource, nullptr, &status);
+    checkStatus("clCreateProgramWithSource", status, true, DEBUG);
+
+    status = clBuildProgram(program, numDevices, devices,
+                            nullptr, nullptr, nullptr);
+    if (status != 0)
+        showProgramBuildLog(program, devices[device]);
+    checkStatus("clBuildProgram", status, true, DEBUG);
+
+    // Create Sum kernel
+    cl_kernel SumKernel = clCreateKernel(program, "SumKernel", &status);
+    checkStatus("clCreateKernel", status, true, DEBUG);
+
+    // Set sum kernel args
+    status = clSetKernelArg(kernel, 0, sizeof(int), &cols);
+    checkStatus("clSetKernelArg-0", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 1, sizeof(float), &max);
+    checkStatus("clSetKernelArg-1", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 2, workBuffSize, &workingBuffer);
+    checkStatus("clSetKernelArg-2", status, true, DEBUG);
+    status = clSetKernelArg(kernel, 3, buffSize, &sumBuffer);
+    checkStatus("clSetKernelArg-3", status, true, DEBUG);
+
+    // Run sum kernel
+    status = clEnqueueNDRangeKernel(
+            cmdQueue,
+            SumKernel,
+            2,
+            global_work_offset,
+            global_work_size,
+            local_work_size,
+            0,
+            nullptr,
+            nullptr
+        );
+    checkStatus("clEnqueueNDRangeKernel-2", status, true, DEBUG);
+
+    // Read back sum image data
+    clEnqueueReadBuffer(cmdQueue, sumBuffer, CL_TRUE, 0, buffSize, sumImg, 0, nullptr, nullptr);
+    clFinish(cmdQueue);
+
+    // Write out image
+    ImgWriter = ImageWriter::create(outFileName + "Sum.jpeg", outCols, outRows);
+    ImgWriter->writeImage(sumImg);
+    delete ImgWriter;
 
     // Free OpenCL resources
     clReleaseMemObject(imgBuffer);
     clReleaseMemObject(maxBuffer);
     clReleaseMemObject(sumBuffer);
     clReleaseMemObject(workingBuffer);
-    clReleaseKernel(kernel);
+    clReleaseKernel(SumKernel);
     clReleaseProgram(program);
     clReleaseCommandQueue(cmdQueue);
     clReleaseContext(context);
@@ -361,4 +433,6 @@ int main (int argc, char* argv[]) {
     delete[] sumImg;
     delete[] platforms;
     delete[] devices;
+    delete[] programSource;
+    delete[] sumSource;
 }
