@@ -80,7 +80,7 @@ void MaxKernel(int depth, int cols, int rows, int projType, __global const unsig
         sum += ((i + 1) / sheetCount) * val;
     }
 
-    auto ndx = idx * colCount + idy;
+    int ndx = idx * colCount + idy;
     maxArr[ndx] = (unsigned char)max;
     workSum[ndx] = sum;
 }
