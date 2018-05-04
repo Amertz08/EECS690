@@ -316,11 +316,13 @@ int main (int argc, char* argv[]) {
     status = clSetKernelArg(kernel, 6, sizeof(cl_mem), &workingBuffer);
     checkStatus("clSetKernelArg-6", status, true, DEBUG);
 
-    // Set processing size
+    /*
+     * Set processing size
+     * TODO: this should be dynamically allocated based on image size and device
+     */
     size_t global_work_size[] = { 256, 256 };
     size_t* global_work_offset = nullptr;
-    // size_t local_work_size[] = { 32, 32 };
-    size_t* local_work_size = nullptr;
+    size_t local_work_size[] = { 32, 32 };
 
     // Run Kernel 1
     status = clEnqueueNDRangeKernel(
@@ -337,11 +339,11 @@ int main (int argc, char* argv[]) {
     checkStatus("clEnqueueNDRangeKernel-1", status, true, DEBUG);
 
     /*
-    Read data back
-    TODO: this is where I seg fault. I've doubled checked sizes and parameters agaisnt
-    provided examples as well as tried to change the 5th parameter to 'progSize' which
-    did not cause a seg fault but the max image prints nothing and there is no working
-    sum max
+     * Read data back
+     * TODO: this is where I seg fault. I've doubled checked sizes and parameters agaisnt
+     * provided examples as well as tried to change the 5th parameter to 'progSize' which
+     * did not cause a seg fault but the max image prints nothing and there is no working
+     * sum max
     */
     clEnqueueReadBuffer(cmdQueue, maxBuffer, CL_FALSE, 0, buffSize, maxImg, 0, nullptr, nullptr);
     clEnqueueReadBuffer(cmdQueue, workingBuffer, CL_FALSE, 0, workBuffSize, workSum, 0, nullptr, nullptr);
